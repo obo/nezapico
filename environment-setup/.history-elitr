@@ -1,0 +1,17 @@
+_T=20220816_19:34:12_7653	 git add .history-elitr
+_T=20220816_19:35:44_7653	 conda create -n myenv
+_T=20220816_19:36:19_7653	 conda create -n obopico
+_T=20220816_19:36:24_7653	 conda activate obopico
+_T=20220816_19:36:26_7653	 cat .history-elitr
+_T=20220816_19:36:36_7653	 pip install esptool
+_T=20220816_19:37:12_7653	 conda install esptool
+_T=20220816_19:37:48_7653	 conda install pip
+_T=20220816_19:38:04_7653	 pip install esptool
+_T=20220816_19:43:13_7653	 pip install thonny
+_T=20220816_19:44:37_7653	 thonny
+_T=20220816_19:44:38_7653	 bg
+_T=20220816_19:45:03_7653	 sudo usermod -a -G dialout elitr
+_T=20220816_19:45:05_7653	 id
+_T=20220816_19:46:38_18357	 h
+_T=20220816_19:46:49_18357	 conda activate obopico
+_T=20220816_19:46:52_18357	 thonny
