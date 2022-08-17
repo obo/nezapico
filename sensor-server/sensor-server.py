@@ -11,17 +11,18 @@ import select
 import onewire, ds18x20
 
 # Main relay for controlling the output
-rele = machine.Pin(16, machine.Pin.OUT)
+rele = machine.Pin(14, machine.Pin.OUT)
 rele.value(0) # switch off by default
 
+thermoPIN = 15
 
 class Temperatures:
-    def __init__(self):
+    def __init__(self, thermoPIN):
         thermoHouse = bytearray(b'(\x956\x81\xe3w<\xec')
         thermoWater = bytearray(b'(D\xc1\x81\xe3\x8f<\x07')
 
         # Find thermometers
-        ds_pin = machine.Pin(22)
+        ds_pin = machine.Pin(thermoPIN)
         self.ds_sensor = ds18x20.DS18X20(onewire.OneWire(ds_pin))
         self.roms = self.ds_sensor.scan()
         print('Found DS devices (thermometers): ', self.roms)
@@ -46,7 +47,7 @@ class Temperatures:
       self.houseTemp = temps[self.houseRomIDX]
       self.waterTemp = temps[self.waterRomIDX]
 
-temps = Temperatures()
+temps = Temperatures(thermoPIN)
 print('House temp: ', temps.houseTemp)
 print('Water temp: ', temps.waterTemp)
 
