@@ -10,11 +10,38 @@ import select
 
 import onewire, ds18x20
 
-# Main relay for controlling the output
-rele = machine.Pin(14, machine.Pin.OUT)
-rele.value(0) # switch off by default
-
+relayPIN = 14
 thermoPIN = 15
+
+class Heating:
+    def __init__(self, relayPIN):
+        # Main relay for controlling the output
+        self.relay = machine.Pin(relayPIN, machine.Pin.OUT)
+        self.relay.value(0) # switch off by default
+        self.heating_running = False
+        self.lastONtime = 0 # when did I last turn the heating on
+        self.lastOFFtime = 0 # when did I last turn the heating off
+    
+    def set_heating(self, should_heat, now = time.time()):
+        # start or stop heating, but only if not switched too recenlty
+        if self.heating_running:
+            if not should_heat:
+                if now - self.lastONtime > 3*60:
+                    # do not run less than 3 minutes
+                    self.lastOFFtime = now
+                    self.relay.value(0)
+                    self.heating_running = False
+        else:
+            # heating not running
+            if should_heat:
+                if now - self.lastOFFtime > 10*60:
+                    # do not pause for less than 10 minutes
+                    self.lastONtime = now
+                    self.relay.value(1)
+                    self.heating_running = True
+            
+heating = Heating(relayPIN)
+
 
 class Temperatures:
     def __init__(self, thermoPIN):
@@ -135,9 +162,12 @@ read_list = [s] # which sockets to check
 sleeptime = 1.5 # seconds
 tempreaddelay = 5 # seconds
 lastreadtime = time.time()
+starttime = lastreadtime
+should_heat = None
 while True:
     print('Idling...', 'Water: ', temps.waterTemp, '; House: ', temps.houseTemp)
     now = time.time()
+    uptimehours = (now - lastreadtime)/3600
     #print('now: ', now, ', diff: ', now-lastreadtime)
     if now - lastreadtime > tempreaddelay:
         temps.update()
@@ -145,9 +175,9 @@ while True:
         #waterTemp = ds_sensor.read_temp(thermoWater)
         lastreadtime = now
         # Consider heating
-        do_heat = (temps.houseTemp < 25 and temps.waterTemp > 26)
-        rele.value(1 if do_heat else 0)
-        print('Read temperatures, should heat? ', do_heat)
+        should_heat = (temps.houseTemp < 20 and temps.waterTemp > 40)
+        heating.set_heating(should_heat, now)
+        print('Read temperatures, should heat? ', should_heat, '; heating running? ', heating.heating_running)
     try:
       readable, writable, errored = select.select(read_list, [], [], sleeptime)
       for s1 in readable:
@@ -163,6 +193,10 @@ while True:
           response = get_html('index.html')
           response = response.replace('TempH', str(temps.houseTemp))
           response = response.replace('TempW', str(temps.waterTemp))
+          response = response.replace('HeatingShould', str(should_heat))
+          response = response.replace('HeatingRunning', str(heating.heating_running))
+          response = response.replace('UptimeHours', str(uptimehours))
+
         
           cl.send('HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
           cl.send(response)
