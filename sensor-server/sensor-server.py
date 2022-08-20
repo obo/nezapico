@@ -57,7 +57,13 @@ heating = Heating(relayPIN)
 class Temperatures:
     def __init__(self, thermoPIN):
         self.thermoPIN = thermoPIN
+        # find external thermometers
         self.find_thermometers()
+        # find on-board thermometer
+        self.onboard_tempsensor = machine.ADC(4)
+        self.conversion_factor = 3.3 / 65535
+        self.boardTemp = 0.0
+
         
     def find_thermometers(self):
         thermoHouse = bytearray(b'(\x956\x81\xe3w<\xec')
@@ -83,6 +89,8 @@ class Temperatures:
         self.houseTemp = 0.0
         self.waterTemp = 0.0
     def update(self):
+        data = self.onboard_tempsensor.read_u16() * self.conversion_factor
+        self.boardTemp = 27-(data-0.706)/0.001721
         if self.found_thermometers:
             # some strange waiting needed
             self.ds_sensor.convert_temp()
@@ -98,10 +106,12 @@ class Temperatures:
 temps = Temperatures(thermoPIN)
 print('House temp: ', temps.houseTemp)
 print('Water temp: ', temps.waterTemp)
+print('Board temp: ', temps.boardTemp)
 
 temps.update()
 print('House temp: ', temps.houseTemp)
 print('Water temp: ', temps.waterTemp)
+print('Board temp: ', temps.boardTemp)
 
 #print(ds_sensor.read_temp(houseTemp))
 
@@ -258,7 +268,7 @@ should_heat = None
 while True:
     if watchdog:
         watchdog.feed() # this must be called regularly
-    print('Idling...', 'Water: ', temps.waterTemp, '; House: ', temps.houseTemp)
+    print('Idling...', 'Water: ', temps.waterTemp, '; House: ', temps.houseTemp, '; Board: ', temps.boardTemp)
     now = time.time()
     uptimehours = (now - lastreadtime)/3600
     #print('now: ', now, ', diff: ', now-lastreadtime)
