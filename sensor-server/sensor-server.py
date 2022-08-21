@@ -12,6 +12,10 @@ import ubinascii
 import machine
 import time
 import select
+import RGB1602 # the display
+# https://www.waveshare.com/wiki/LCD1602_RGB_Module#Download_the_demo
+# Then I flashed the .uf2 file onto pico
+#  (i.e. connect USB while holding the bootsel button and then copy the file to pico)
 
 import onewire, ds18x20
 
@@ -23,6 +27,84 @@ thermoPIN = 15
 watchdog = None
 #watchdog = machine.WDT(timeout=60*1000) # auto reboot when dead for more than a minute
 ##watchdog.feed() # this must be called regularly
+
+
+class Display:
+    def __init__(self):
+        self.lcd = RGB1602.RGB1602(16,2)
+        self.rotation_state = 0
+    def set_color_for_failure(self):
+        # failure is yellow, not green, not blue, not red
+        self.lcd.setRGB(255, 255, 0)
+    def set_color_by_temperature(self, temp):
+        # temperatures above "nice" level are red (we get hot showers)
+        # the max value is fully red
+        # the min value is fully blue (but for readability, we keep read at 100
+        nicetemp = 40 # anything above this goes for read
+        maxtemp = 60 # this is boiling
+        mintemp = 20
+        if temp <= nicetemp:
+            # going blue, red at 100, blue between 255 and 0
+            red = 100
+            blue = int(255-255*(temp-mintemp)/(nicetemp-mintemp))
+        else:
+            # going red, between 100 and 255
+            blue = 0
+            red = int(100+(255-100)*(temp-nicetemp)/(nicetemp-mintemp))
+        print(red, blue, 0)
+        red = max(0, min(255, red))
+        blue = max(0, min(255, blue))
+        print(red, blue, 0)
+        self.lcd.setRGB(red, 0, blue)
+    def report(self, uptimehours, mynetwork, temps, heating, should_heat):
+        if temps.waterRomIDX == -1:
+            self.set_color_for_failure()
+            water = '??'
+        else:
+            self.set_color_by_temperature(temps.waterTemp)
+            water = '%2.0f' % (temps.waterTemp)
+        if temps.houseRomIDX == -1:
+            house = '??'
+            house = '%2.0f' % (temps.boardTemp)
+        else:
+            house = '%2.0f' % (temps.houseTemp)
+        line1 = 'Water '+water+' Room '+house
+        self.lcd.setCursor(0,0)
+        self.lcd.printout(line1)
+        up = int(uptimehours/24)
+        upstr = '99+' if up > 99 else '%2id' % up
+        if can_network:
+            if mynetwork.got_wlan:
+                if mynetwork.got_socket:
+                    wifistr = ' OK'
+                else:
+                    wifistr = 'BAD'
+            else:
+                wifistr = ' no'
+        else:
+            wifistr = ' --'
+        if heating and should_heat:
+            # rotstates = '-\|/' # backslash not available
+            rotstates = '<^>v'
+            self.rotation_state += 1
+            self.rotation_state %= 4
+            heatstr = rotstates[self.rotation_state]
+        elif heating and not should_heat:
+            heatstr =  'v' # will stop
+        elif not heating and should_heat:
+            heatstr =  '^' # will start
+        else:
+            heatstr = '.'
+        line2 = 'up'+upstr+',wifi'+wifistr+'  '+heatstr
+        self.lcd.setCursor(0,1)
+        self.lcd.printout(line2)
+#  0123456789012345
+#  Water 43 Room 22
+#  up99+,wifi OK  -\|/-\|/
+        
+
+lcd=Display()
+lcd.set_color_for_failure()
 
 class Heating:
     def __init__(self, relayPIN):
@@ -207,16 +289,18 @@ class MyNetwork:
                 s.bind(addr)
                 s.listen(1)
                 self.socket = s
+                self.got_socket = True
             except:
-                self.socket = None
+                self.socket = 0
+                self.got_socket = False
 
     def handle_network_requests(self, uptimehours, temps, heating, should_heat):
         # handle network requests
         if can_network:
-            if self.socket is None:
+            if not self.got_socket:
                 self.get_listening_socket()
 
-            if self.socket is not None:
+            if self.got_socket:
                 self.respond_on_socket(uptimehours, temps, heating, should_heat)
 
     def respond_on_socket(self, uptimehours, temps, heating, should_heat):
@@ -282,7 +366,9 @@ while True:
         heating.set_heating(should_heat, now)
         print('Read temperatures, should heat? ', should_heat, '; heating running? ', heating.heating_running)
     
+    lcd.report(uptimehours, mynetwork, temps, heating.heating_running, should_heat)
     if can_network:
-        mynetwork.handle_network_requests(uptimehours, temps, heating, should_heat)
+        mynetwork.handle_network_requests(uptimehours, temps,
+        heating.heating_running, should_heat)
     else:
         time.sleep(sleeptime)
