@@ -28,6 +28,43 @@ watchdog = None
 #watchdog = machine.WDT(timeout=60*1000) # auto reboot when dead for more than a minute
 ##watchdog.feed() # this must be called regularly
 
+class Stats:
+    def __init__(self):
+        # for uptime
+        self.starttime = time.time()
+        self.heating_runtime_sum = 0
+        self.heating_starttime = None
+    def uptime_hours(self):
+        return (time.time() - self.starttime)/3600
+    def start_heating(self):
+        if self.heating_starttime is None:
+            self.heating_starttime = time.time()
+    def stop_heating(self):
+        if self.heating_starttime is None:
+            print("BUG! stopping without having started")
+        else:
+            self.heating_runtime_sum += time.time()-self.heating_starttime
+        self.heating_starttime = None
+    def operated_hours(self):
+        current_segment = 0 if self.heating_starttime is None else time.time()-self.heating_starttime
+        return (self.heating_runtime_sum + current_segment)/3600
+
+class Params:
+    # constants and decisions about heating
+    def __init__(self):
+        self.min_runtime_minutes = 3
+          # do not run heating for less than 3 minutes
+        self.min_stoptime_minutes = 10
+          # do not stop hearing for less than 10 minutes
+    def decide_if_heat(self, temps):
+        # decide if we should heat
+        should_heat = (temps.houseTemp < 20 and temps.waterTemp > 40)
+        if not should_heat:
+            # second option: heat if house is cold
+            should_heat = (temps.houseTemp < 15 and temps.waterTemp > 30)
+        # Debugging heating: every 10 seconds switch on and off
+        should_heat = (time.time() - stats.starttime) % 20 < 10
+        return should_heat
 
 class Display:
     def __init__(self):
@@ -56,7 +93,7 @@ class Display:
         blue = max(0, min(255, blue))
         print(red, blue, 0)
         self.lcd.setRGB(red, 0, blue)
-    def report(self, uptimehours, mynetwork, temps, heating, should_heat):
+    def report(self, stats, mynetwork, temps, heating, should_heat):
         if temps.waterRomIDX == -1:
             self.set_color_for_failure()
             water = '??'
@@ -71,7 +108,7 @@ class Display:
         line1 = 'Water '+water+' Room '+house
         self.lcd.setCursor(0,0)
         self.lcd.printout(line1)
-        up = int(uptimehours/24)
+        up = int(stats.uptime_hours()/24)
         upstr = '99+' if up > 99 else '%2id' % up
         if can_network:
             if mynetwork.got_wlan:
@@ -107,33 +144,38 @@ lcd=Display()
 lcd.set_color_for_failure()
 
 class Heating:
-    def __init__(self, relayPIN):
+    def __init__(self, relayPIN, params):
         # Main relay for controlling the output
         self.relay = machine.Pin(relayPIN, machine.Pin.OUT)
         self.relay.value(0) # switch off by default
         self.heating_running = False
         self.lastONtime = 0 # when did I last turn the heating on
         self.lastOFFtime = 0 # when did I last turn the heating off
+        self.params = params
     
-    def set_heating(self, should_heat, now = time.time()):
+    def set_heating(self, stats, should_heat, now = time.time()):
         # start or stop heating, but only if not switched too recenlty
         if self.heating_running:
             if not should_heat:
-                if now - self.lastONtime > 3*60:
+                if now - self.lastONtime > params.min_runtime_minutes*60:
                     # do not run less than 3 minutes
                     self.lastOFFtime = now
                     self.relay.value(0)
                     self.heating_running = False
+                    stats.stop_heating()
         else:
             # heating not running
             if should_heat:
-                if now - self.lastOFFtime > 10*60:
+                if now - self.lastOFFtime > params.min_stoptime_minutes*60:
                     # do not pause for less than 10 minutes
                     self.lastONtime = now
                     self.relay.value(1)
                     self.heating_running = True
-            
-heating = Heating(relayPIN)
+                    stats.start_heating()
+
+params = Params()
+
+heating = Heating(relayPIN, params)
 
 
 class Temperatures:
@@ -294,16 +336,16 @@ class MyNetwork:
                 self.socket = 0
                 self.got_socket = False
 
-    def handle_network_requests(self, uptimehours, temps, heating, should_heat):
+    def handle_network_requests(self, stats, temps, heating, should_heat):
         # handle network requests
         if can_network:
             if not self.got_socket:
                 self.get_listening_socket()
 
             if self.got_socket:
-                self.respond_on_socket(uptimehours, temps, heating, should_heat)
+                self.respond_on_socket(stats, temps, heating, should_heat)
 
-    def respond_on_socket(self, uptimehours, temps, heating, should_heat):
+    def respond_on_socket(self, stats, temps, heating, should_heat):
         # knowing that socket is ready, check connections
         try:
           read_list = [self.socket] # which sockets to check
@@ -323,7 +365,8 @@ class MyNetwork:
               response = response.replace('TempW', str(temps.waterTemp))
               response = response.replace('HeatingShould', str(should_heat))
               response = response.replace('HeatingRunning', str(heating.heating_running))
-              response = response.replace('UptimeHours', str(uptimehours))
+              response = response.replace('UptimeHours', str(stats.uptime_hours()))
+              response = response.replace('OperationHours', str(stats.operated_hours()))
             
               cl.send('HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
               cl.send(response)
@@ -347,14 +390,13 @@ mynetwork = MyNetwork()
 sleeptime = 1.5 # seconds
 tempreaddelay = 5 # seconds
 lastreadtime = time.time()
-starttime = lastreadtime
 should_heat = None
+stats = Stats()
 while True:
     if watchdog:
         watchdog.feed() # this must be called regularly
-    print('Idling...', 'Water: ', temps.waterTemp, '; House: ', temps.houseTemp, '; Board: ', temps.boardTemp)
+    print('Idling...', 'Water: ', temps.waterTemp, '; House: ', temps.houseTemp, '; Board: ', temps.boardTemp, '; Up: ', stats.uptime_hours(), '; HoursOperated: ', stats.operated_hours())
     now = time.time()
-    uptimehours = (now - lastreadtime)/3600
     #print('now: ', now, ', diff: ', now-lastreadtime)
     if now - lastreadtime > tempreaddelay:
         temps.update()
@@ -362,13 +404,12 @@ while True:
         #waterTemp = ds_sensor.read_temp(thermoWater)
         lastreadtime = now
         # Consider heating
-        should_heat = (temps.houseTemp < 20 and temps.waterTemp > 40)
-        heating.set_heating(should_heat, now)
+        should_heat = params.decide_if_heat(temps)
+        heating.set_heating(stats, should_heat, now)
         print('Read temperatures, should heat? ', should_heat, '; heating running? ', heating.heating_running)
     
-    lcd.report(uptimehours, mynetwork, temps, heating.heating_running, should_heat)
+    lcd.report(stats, mynetwork, temps, heating.heating_running, should_heat)
     if can_network:
-        mynetwork.handle_network_requests(uptimehours, temps,
-        heating.heating_running, should_heat)
+        mynetwork.handle_network_requests(stats, temps, heating.heating_running, should_heat)
     else:
         time.sleep(sleeptime)
