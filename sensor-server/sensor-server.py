@@ -12,21 +12,20 @@ import ubinascii
 import machine
 import time
 import select
-import RGB1602 # the display
-# https://www.waveshare.com/wiki/LCD1602_RGB_Module#Download_the_demo
-# Then I flashed the .uf2 file onto pico
-#  (i.e. connect USB while holding the bootsel button and then copy the file to pico)
+try:
+  import RGB1602 # the display
+  # https://www.waveshare.com/wiki/LCD1602_RGB_Module#Download_the_demo
+  # Then I flashed the .uf2 file onto pico
+  #  (i.e. connect USB while holding the bootsel button and then copy the file to pico)
+  can_display = True
+except:
+    can_display = False
 
 import onewire, ds18x20
 
 relayPIN = 14
 thermoPIN = 15
 
-
-# hardware watchdog
-watchdog = None
-#watchdog = machine.WDT(timeout=60*1000) # auto reboot when dead for more than a minute
-##watchdog.feed() # this must be called regularly
 
 class Stats:
     def __init__(self):
@@ -58,21 +57,23 @@ class Params:
           # do not stop hearing for less than 10 minutes
     def decide_if_heat(self, temps):
         # decide if we should heat
-        should_heat = (temps.houseTemp < 20 and temps.waterTemp > 40)
+        should_heat = (temps.houseTemp < 15 and temps.waterTemp > 50)
         if not should_heat:
             # second option: heat if house is cold
-            should_heat = (temps.houseTemp < 15 and temps.waterTemp > 30)
-        # Debugging heating: every 10 seconds switch on and off
-        should_heat = (time.time() - stats.starttime) % 20 < 10
+            should_heat = (temps.houseTemp < 10 and temps.waterTemp > 40)
+        ## Debugging heating: every 10 seconds switch on and off
+        #should_heat = (time.time() - stats.starttime) % 20 < 10
         return should_heat
 
 class Display:
     def __init__(self):
-        self.lcd = RGB1602.RGB1602(16,2)
+        if can_display:
+            self.lcd = RGB1602.RGB1602(16,2)
         self.rotation_state = 0
     def set_color_for_failure(self):
-        # failure is yellow, not green, not blue, not red
-        self.lcd.setRGB(255, 255, 0)
+        if can_display:
+            # failure is yellow, not green, not blue, not red
+            self.lcd.setRGB(255, 255, 0)
     def set_color_by_temperature(self, temp):
         # temperatures above "nice" level are red (we get hot showers)
         # the max value is fully red
@@ -92,7 +93,8 @@ class Display:
         red = max(0, min(255, red))
         blue = max(0, min(255, blue))
         print(red, blue, 0)
-        self.lcd.setRGB(red, 0, blue)
+        if can_display:
+            self.lcd.setRGB(red, 0, blue)
     def report(self, stats, mynetwork, temps, heating, should_heat):
         if temps.waterRomIDX == -1:
             self.set_color_for_failure()
@@ -106,8 +108,10 @@ class Display:
         else:
             house = '%2.0f' % (temps.houseTemp)
         line1 = 'Water '+water+' Room '+house
-        self.lcd.setCursor(0,0)
-        self.lcd.printout(line1)
+        
+        if can_display:
+            self.lcd.setCursor(0,0)
+            self.lcd.printout(line1)
         up = int(stats.uptime_hours()/24)
         upstr = '99+' if up > 99 else '%2id' % up
         if can_network:
@@ -133,8 +137,10 @@ class Display:
         else:
             heatstr = '.'
         line2 = 'up'+upstr+',wifi'+wifistr+'  '+heatstr
-        self.lcd.setCursor(0,1)
-        self.lcd.printout(line2)
+        
+        if can_display:
+            self.lcd.setCursor(0,1)
+            self.lcd.printout(line2)
 #  0123456789012345
 #  Water 43 Room 22
 #  up99+,wifi OK  -\|/-\|/
@@ -169,7 +175,8 @@ class Heating:
                 if now - self.lastOFFtime > params.min_stoptime_minutes*60:
                     # do not pause for less than 10 minutes
                     self.lastONtime = now
-                    self.relay.value(1)
+                    ## self.relay.value(1)
+                    ## DEBUG!! NESPOUSTIM
                     self.heating_running = True
                     stats.start_heating()
 
@@ -239,6 +246,15 @@ print('Board temp: ', temps.boardTemp)
 
 #print(ds_sensor.read_temp(houseTemp))
 
+
+# hardware watchdog
+watchdog = None
+# watchdog = machine.WDT(timeout=30*60*1000) # auto reboot when dead for more than a minute
+if watchdog is not None:
+    watchdog.feed() # this must be called regvularly
+
+
+
 class MyNetwork:
     def __init__(self):
         self.got_wlan = False
@@ -281,6 +297,9 @@ class MyNetwork:
         # Wait for connection with 10 second timeout
         timeout = 10
         while timeout > 0:
+            if watchdog:
+                watchdog.feed() # this must be called regularly
+
             if wlan.status() < 0 or wlan.status() >= 3:
                 break
             timeout -= 1
@@ -364,7 +383,7 @@ class MyNetwork:
               response = response.replace('TempH', str(temps.houseTemp))
               response = response.replace('TempW', str(temps.waterTemp))
               response = response.replace('HeatingShould', str(should_heat))
-              response = response.replace('HeatingRunning', str(heating.heating_running))
+              response = response.replace('HeatingRunning', str(heating))
               response = response.replace('UptimeHours', str(stats.uptime_hours()))
               response = response.replace('OperationHours', str(stats.operated_hours()))
             
@@ -384,7 +403,10 @@ def get_html(html_name):
     return html
 
 # initialize my failsafe networking
+print('Before network')
 mynetwork = MyNetwork()
+print('After network')
+
 
 # Listen for connections, with a non-blocking socket.accept
 sleeptime = 1.5 # seconds
