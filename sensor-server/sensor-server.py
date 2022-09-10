@@ -246,12 +246,23 @@ print('Board temp: ', temps.boardTemp)
 
 #print(ds_sensor.read_temp(houseTemp))
 
+class DelayedWatchdog:
+    # start the real hardware watchdog only after 5 minutes, for easier
+    # debugging
+    def __init__(self):
+        self.watchdog = None
+        self.inittime = time.time()
+    def feed(self):
+        if self.watchdog:
+            self.watchdog.feed()
+        else:
+            if time.time() - self.inittime > 60*3:
+                self.watchdog = machine.WDT(timeout=5*60*1000)
+                # auto reboot when dead for more than a minute
+
 
 # hardware watchdog
-watchdog = None
-# watchdog = machine.WDT(timeout=30*60*1000) # auto reboot when dead for more than a minute
-if watchdog is not None:
-    watchdog.feed() # this must be called regvularly
+watchdog = DelayedWatchdog()
 
 
 
@@ -297,8 +308,7 @@ class MyNetwork:
         # Wait for connection with 10 second timeout
         timeout = 10
         while timeout > 0:
-            if watchdog:
-                watchdog.feed() # this must be called regularly
+            watchdog.feed() # this must be called regularly
 
             if wlan.status() < 0 or wlan.status() >= 3:
                 break
@@ -415,8 +425,7 @@ lastreadtime = time.time()
 should_heat = None
 stats = Stats()
 while True:
-    if watchdog:
-        watchdog.feed() # this must be called regularly
+    watchdog.feed() # this must be called regularly
     print('Idling...', 'Water: ', temps.waterTemp, '; House: ', temps.houseTemp, '; Board: ', temps.boardTemp, '; Up: ', stats.uptime_hours(), '; HoursOperated: ', stats.operated_hours())
     now = time.time()
     #print('now: ', now, ', diff: ', now-lastreadtime)
