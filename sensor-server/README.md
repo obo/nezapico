@@ -1,16 +1,9 @@
+# Usage
 
-2: 30, 3: 34.4, hlasi vodu 28.6 voda sotva odrazena
-2: 52, 3: 57.2, hlasi vody 44.6, voda na ruce bezva horka   slunce sviti, solar nestahuje
+- Record temperatures from mid and top tank thermometer along with what our sensor says.
+- Run ``make`` to plot temp-correlations.tab.
 
-2: 58.2,  3: 63.2,  Hlasil 48.8
-
-2: 53.8, 3:60.2, Water: 46.3125 | House: 18.375
-
-2: 51.7, 3:60.1, w 47.12, h 18.6
-
-2: 28.9, 3:30.0, w:25
-
-
+# Debugging
 2022-09-17
 trying to locate the crashes, running in debug mode, it stopped here:
 Idling... Water:  29.125 ; House:  19.8125 ; Board:  27.0444 ; Up:  6.911944 ; HoursOperated:  0.0

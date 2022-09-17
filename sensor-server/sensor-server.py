@@ -61,6 +61,10 @@ class Params:
         if not should_heat:
             # second option: heat if house is cold
             should_heat = (temps.houseTemp < 10 and temps.waterTemp > 40)
+        if not should_heat:
+            # safety option: if water too hot, free the capacity regardless
+            # house temperature
+            should_heat = (temps.waterTemp > 80)
         ## Debugging heating: every 10 seconds switch on and off
         #should_heat = (time.time() - stats.starttime) % 20 < 10
         return should_heat
