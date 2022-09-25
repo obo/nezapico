@@ -416,11 +416,26 @@ class MyNetwork:
             if s1 is self.socket:
               cl, addr = self.socket.accept()
               print('Client connected from', addr)
-              cl_file = cl.makefile('rwb', 0)
-              while True:
-                  line = cl_file.readline()
-                  if not line or line == b'\r\n':
-                      break
+
+              query = cl.recv(1024)
+              print('QUERY:', query)
+              
+              query = str(query)
+              ### I am seeking for:  ?house=30&water=24&Save=Save
+#               led_on = r.find('?led=on')
+#               led_off = r.find('?led=off')
+#               print('led_on = ', led_on)
+#               print('led_off = ', led_off)
+#               if led_on > -1:
+#                   print('LED ON')
+#                   led.value(1)
+
+### OLD, reading all input
+#               cl_file = cl.makefile('rwb', 0)
+#               while True:
+#                   line = cl_file.readline()
+#                   if not line or line == b'\r\n':
+#                       break
                 
               response = get_html('index.html')
               response = response.replace('TempH', str(temps.houseTemp))
