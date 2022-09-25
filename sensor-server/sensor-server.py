@@ -1,27 +1,39 @@
-import rp2
 try:
-    import network
+    import rp2
+    import ubinascii
+    import machine
+    import onewire, ds18x20
+    on_raspberry = True
+except:
+    import fake_machine as machine
+    import fake_ds18x20 as ds18x20
+    import fake_onewire as onewire
+    on_raspberry = False
+try:
+    if on_raspberry:
+        # on raspberry, we need network
+        import network
+        import urequests as requests
+        # load custom credentials
+        from secrets import secrets
+    else:
+        import requests
     import socket
-    import urequests as requests
-    # load custom credentials
-    from secrets import secrets
     can_network = True
 except:
+    print("CANNOT NETWORK")
     can_network = False
-import ubinascii
-import machine
 import time
 import select
 try:
-  import RGB1602 # the display
-  # https://www.waveshare.com/wiki/LCD1602_RGB_Module#Download_the_demo
-  # Then I flashed the .uf2 file onto pico
-  #  (i.e. connect USB while holding the bootsel button and then copy the file to pico)
-  can_display = True
+    import RGB1602 # the display
+    # https://www.waveshare.com/wiki/LCD1602_RGB_Module#Download_the_demo
+    # Then I flashed the .uf2 file onto pico
+    #  (i.e. connect USB while holding the bootsel button and then copy the file to pico)
+    can_display = True
 except:
     can_display = False
 
-import onewire, ds18x20
 
 relayPIN = 14
 thermoPIN = 15
@@ -183,10 +195,20 @@ class Heating:
                     ## DEBUG!! NESPOUSTIM
                     self.heating_running = True
                     stats.start_heating()
+class FakeHeating (Heating):
+    def __init__(self, relayPIN, params):
+        print("FAKE Heating")
+    def set_heating(**kwargs):
+        print("FAKE set_heating")
+        
 
 params = Params()
 
 heating = Heating(relayPIN, params)
+# if on_raspberry:
+#     heating = Heating(relayPIN, params)
+# else:
+#     heating = FakeHeating(relayPIN, params)
 
 
 class Temperatures:
@@ -272,7 +294,13 @@ watchdog = DelayedWatchdog()
 
 class MyNetwork:
     def __init__(self):
-        self.got_wlan = False
+        if on_raspberry:
+            self.got_wlan = False
+            self.use_port = 80
+        else:
+            # assuming network is provided
+            self.got_wlan = True
+            self.use_port = 8080
         self.get_listening_socket()
 
     def get_wlan(self):
@@ -355,7 +383,7 @@ class MyNetwork:
         if self.got_wlan:
             try:
                 # HTTP server with socket
-                addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
+                addr = socket.getaddrinfo('0.0.0.0', self.use_port)[0][-1]
                 print('Listening on', addr)
                 
                 s = socket.socket()
@@ -367,6 +395,7 @@ class MyNetwork:
                 self.got_socket = True
             except:
                 self.socket = 0
+                print('Failed to get listening socket')
                 self.got_socket = False
 
     def handle_network_requests(self, stats, temps, heating, should_heat):
@@ -401,8 +430,12 @@ class MyNetwork:
               response = response.replace('UptimeHours', str(stats.uptime_hours()))
               response = response.replace('OperationHours', str(stats.operated_hours()))
             
-              cl.send('HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
-              cl.send(response)
+              if on_raspberry:
+                cl.send('HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
+                cl.send(response)
+              else:
+                cl.send(b'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
+                cl.send(response.encode())
               cl.close()
               print('Done serving')
         except OSError as e:
