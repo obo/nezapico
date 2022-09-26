@@ -3,6 +3,11 @@
 - Record temperatures from mid and top tank thermometer along with what our sensor says.
 - Run ``make`` to plot temp-correlations.tab.
 
+
+# Temperatures correlations
+
+Seems that 32 on our sensor could be the value of about 40 on the hardware dialer.
+
 # Debugging
 2022-09-17
 trying to locate the crashes, running in debug mode, it stopped here:
