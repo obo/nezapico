@@ -67,12 +67,16 @@ class Params:
           # do not run heating for less than 3 minutes
         self.min_stoptime_minutes = 10
           # do not stop hearing for less than 10 minutes
+        self.desiredHouseMin = 20
+          # start heating if house below this
+        self.desiredWaterMin = 50
+          # stop heating if water below this
     def decide_if_heat(self, temps):
         # decide if we should heat
-        should_heat = (temps.houseTemp < 15 and temps.waterTemp > 50)
-        if not should_heat:
-            # second option: heat if house is cold
-            should_heat = (temps.houseTemp < 10 and temps.waterTemp > 40)
+        should_heat = (temps.houseTemp < self.desiredHouseMin and temps.waterTemp > self.desiredWaterMin)
+        #if not should_heat:
+        #    # second option: heat if house is cold
+        #    should_heat = (temps.houseTemp < 10 and temps.waterTemp > 40)
         if not should_heat:
             # safety option: if water too hot, free the capacity regardless
             # house temperature
@@ -421,14 +425,25 @@ class MyNetwork:
               print('QUERY:', query)
               
               query = str(query)
-              ### I am seeking for:  ?house=30&water=24&Save=Save
-#               led_on = r.find('?led=on')
-#               led_off = r.find('?led=off')
-#               print('led_on = ', led_on)
-#               print('led_off = ', led_off)
-#               if led_on > -1:
-#                   print('LED ON')
-#                   led.value(1)
+              
+              # QUERY: b'GET /?house=30&water=24&Save=Save HTTP/1.1\r\nHost: localhost:...
+              start = query.find('GET /?') + 6
+              end = query.find('HTTP', start)
+              args = query[start:end]
+              print('ARGS:', args)
+              try:
+                pairs = dict([pair.split('=') for pair in args.split('&')])
+              except:
+                pairs = {}
+              print('PAIRS:', pairs) # the args that we received
+              try:
+                queryHouse = 0+int(pairs["house"])
+              except:
+                queryHouse = params.desiredHouseMin
+              try:
+                queryWater = 0+int(pairs["water"])
+              except:
+                queryWater = params.desiredWaterMin
 
 ### OLD, reading all input
 #               cl_file = cl.makefile('rwb', 0)
@@ -440,6 +455,8 @@ class MyNetwork:
               response = get_html('index.html')
               response = response.replace('TempH', str(temps.houseTemp))
               response = response.replace('TempW', str(temps.waterTemp))
+              response = response.replace('DefaultHouseQuery', str(queryHouse))
+              response = response.replace('DefaultWaterQuery', str(queryWater))
               response = response.replace('HeatingShould', str(should_heat))
               response = response.replace('HeatingRunning', str(heating))
               response = response.replace('UptimeHours', str(stats.uptime_hours()))

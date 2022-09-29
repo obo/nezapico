@@ -16,10 +16,23 @@
     	<p>
 	<form method="GET">
 	Warm house if colder than
-	<input type="number" id="house" name="house"/>.
+	<input type="number" id="house" name="house" value="DefaultHouseQuery"/>.
 	and water warmer than
-	<input type="number" id="water" name="water"/>.
+	<input type="number" id="water" name="water" value="DefaultWaterQuery"/>.
 	<input type="submit" name="Save" value="Save"/>
+	</form>
+	</p>
+    	<p>
+	Predefined:
+	<form method="GET">
+	<input type="hidden" id="house" name="house" value="20"/>
+	<input type="hidden" id="water" name="water" value="50"/>
+	<input type="submit" name="Compfy" value="Compfy: 20-50"/>
+	</form>
+	<form method="GET">
+	<input type="hidden" id="house" name="house" value="10"/>
+	<input type="hidden" id="water" name="water" value="30"/>
+	<input type="submit" name="Compfy" value="Aggresive: 10-30"/>
 	</form>
 	</p>
     </body>
