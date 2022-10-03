@@ -72,15 +72,19 @@ class Params:
         self.desiredWaterMin = 50
           # stop heating if water below this
     def decide_if_heat(self, temps):
+        house = temps.temperatures["house"]
+        if house is None: return False
+        water = temps.temperatures["water"]
+        if water is None: return False
         # decide if we should heat
-        should_heat = (temps.houseTemp < self.desiredHouseMin and temps.waterTemp > self.desiredWaterMin)
+        should_heat = (house < self.desiredHouseMin and water > self.desiredWaterMin)
         #if not should_heat:
         #    # second option: heat if house is cold
         #    should_heat = (temps.houseTemp < 10 and temps.waterTemp > 40)
         if not should_heat:
             # safety option: if water too hot, free the capacity regardless
             # house temperature
-            should_heat = (temps.waterTemp > 80)
+            should_heat = (water > 80)
         ## Debugging heating: every 10 seconds switch on and off
         #should_heat = (time.time() - stats.starttime) % 20 < 10
         return should_heat
@@ -116,13 +120,13 @@ class Display:
         if can_display:
             self.lcd.setRGB(red, 0, blue)
     def report(self, stats, mynetwork, temps, heating, should_heat):
-        if temps.waterRomIDX == -1:
+        if temps.temperatures["water"] is None:
             self.set_color_for_failure()
             water = '??'
         else:
             self.set_color_by_temperature(temps.waterTemp)
             water = '%2.0f' % (temps.waterTemp)
-        if temps.houseRomIDX == -1:
+        if temps.temperatures["house"] is None:
             house = '??'
             house = '%2.0f' % (temps.boardTemp)
         else:
@@ -227,52 +231,80 @@ class Temperatures:
 
         
     def find_thermometers(self):
-        thermoHouse = bytearray(b'(\x956\x81\xe3w<\xec')
-        thermoWater = bytearray(b'(D\xc1\x81\xe3\x8f<\x07')
+        thermometers = {
+        # thermoHouse:
+          "house" : bytearray(b'(\x956\x81\xe3w<\xec'),
+          # thermoWater:
+          "water" : bytearray(b'(D\xc1\x81\xe3\x8f<\x07'),
+          "heaterIn" : bytearray(b'(AAAA'),
+          "heaterOut" : bytearray(b'(AAAA'),
+        }
 
         # Find thermometers
         ds_pin = machine.Pin(self.thermoPIN)
         self.ds_sensor = ds18x20.DS18X20(onewire.OneWire(ds_pin))
         self.roms = self.ds_sensor.scan()
+        # # DEBUG:
+        # self.roms = [bytearray(b'(D\xc1\x81\xe3\x8f<\x07'), bytearray(b'(\x956\x81\xe3w<\xec')]
         print('Found DS devices (thermometers): ', self.roms)
-        self.houseRomIDX = -1
-        self.waterRomIDX = -1
+        self.thermoIDX = dict.fromkeys(thermometers.keys())
+          # thermometer name -> thermometer index
         for i in range(len(self.roms)):
-            self.houseRomIDX = i if self.roms[i] == thermoHouse else self.houseRomIDX
-            self.waterRomIDX = i if self.roms[i] == thermoWater else self.waterRomIDX
+            print("I", i)
+            print("type", type(self.roms))
+            print("type", type(self.roms[i]))
+            r = self.roms[i]
+            print("Who's this thermo?", self.roms[i])
+            # can't hash bytearrays, so walk through dictionary
+            t = None # this termometer's name
+            for k, v in thermometers.items():
+                print("  Is it?", v)
+                if v == r:
+                    print("  yes!", k)
+                    t = k # found the thermometer
+            if t is not None:
+              self.thermoIDX[t] = i
+            else:
+              print("Found unexpected thermometer", r, "at index", i)
+            # self.houseRomIDX = i if self.roms[i] == thermoHouse else self.houseRomIDX
+            # self.waterRomIDX = i if self.roms[i] == thermoWater else self.waterRomIDX
         #assert self.houseRomIDX != -1, "Failed to find house thermometer"
         #assert self.waterRomIDX != -1, "Failed to find water thermometer"
-        if self.houseRomIDX == -1:
-            print("Failed to find house thermometer")
-        if self.waterRomIDX == -1:
-            print("Failed to find water thermometer")
-        self.found_thermometers = self.houseRomIDX != -1 and self.waterRomIDX != -1
-        self.houseTemp = 0.0
-        self.waterTemp = 0.0
+        for n in thermometers.keys():
+            if self.thermoIDX[n] is None:
+                print("Failed to find thermometer:", n)
+        self.temperatures = dict.fromkeys(thermometers.keys())
+          # thermometer name -> thermometer index
+        # self.found_thermometers = self.houseRomIDX != -1 and self.waterRomIDX != -1
+        # self.houseTemp = 0.0
+        # self.waterTemp = 0.0
     def update(self):
         data = self.onboard_tempsensor.read_u16() * self.conversion_factor
         self.boardTemp = 27-(data-0.706)/0.001721
-        if self.found_thermometers:
+        if len(self.roms) > 0:
+            # some thermometers were found
             # some strange waiting needed
             self.ds_sensor.convert_temp()
             time.sleep_ms(750)
             temps = [self.ds_sensor.read_temp(rom) for rom in self.roms]
-            #print(temps)
-            self.houseTemp = temps[self.houseRomIDX]
-            self.waterTemp = temps[self.waterRomIDX]
+            print(temps)
+            for t, idx in self.thermoIDX.items():
+                self.temperatures[t] = temps[idx]
+            # self.houseTemp = temps[self.houseRomIDX]
+            # self.waterTemp = temps[self.waterRomIDX]
         else:
             print("Retrying to find thermometers")
             self.find_thermometers()
 
 temps = Temperatures(thermoPIN)
-print('House temp: ', temps.houseTemp)
-print('Water temp: ', temps.waterTemp)
-print('Board temp: ', temps.boardTemp)
-
+# print('House temp: ', temps.houseTemp)
+# print('Water temp: ', temps.waterTemp)
+# print('Board temp: ', temps.boardTemp)
+# 
 temps.update()
-print('House temp: ', temps.houseTemp)
-print('Water temp: ', temps.waterTemp)
-print('Board temp: ', temps.boardTemp)
+for t, temp in temps.temperatures.items():
+    print('temp in', t, ':', temp)
+# print('Water temp: ', temps.waterTemp)
 
 #print(ds_sensor.read_temp(houseTemp))
 
@@ -495,7 +527,9 @@ should_heat = None
 stats = Stats()
 while True:
     watchdog.feed() # this must be called regularly
-    print('Idling...', 'Water: ', temps.waterTemp, '; House: ', temps.houseTemp, '; Board: ', temps.boardTemp, '; Up: ', stats.uptime_hours(), '; HoursOperated: ', stats.operated_hours())
+    print('Idling...', " ".join([("%s:%s"%(n, "%.1f"%t if t is not None else "--"))
+    for n, t in temps.temperatures.items()]))
+    # ]'Water: ', temps.temps["water"], '; House: ', temps.houseTemp, '; Board: ', temps.boardTemp, '; Up: ', stats.uptime_hours(), '; HoursOperated: ', stats.operated_hours())
     now = time.time()
     #print('now: ', now, ', diff: ', now-lastreadtime)
     if now - lastreadtime > tempreaddelay:
