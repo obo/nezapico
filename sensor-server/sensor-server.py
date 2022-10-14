@@ -547,3 +547,6 @@ while True:
         mynetwork.handle_network_requests(stats, temps, heating.heating_running, should_heat)
     else:
         time.sleep(sleeptime)
+    if stats.uptime_hours() > 48:
+        # safety reset every two days
+        os.system("sudo reboot")
