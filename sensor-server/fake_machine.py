@@ -13,7 +13,9 @@ class ADC:
         return 0
 
 class WDT:
-    def __init__(self, *args):
-        print("FAKE machine WDT ", args)
+    def __init__(self, *args, **kwargs):
+        print("FAKE machine WDT ", args, kwargs)
+    def feed(self, *args, **kwargs):
+        print("FAKE machine WDT feed ", args, kwargs)
         
 

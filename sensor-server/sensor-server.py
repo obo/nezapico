@@ -18,6 +18,7 @@ try:
         from secrets import secrets
     else:
         import requests
+    import json
     import socket
     can_network = True
 except:
@@ -37,6 +38,7 @@ except:
 
 relayPIN = 14
 thermoPIN = 15
+paramsFilename = "parameters.txt"
 
 
 class Stats:
@@ -71,6 +73,28 @@ class Params:
           # start heating if house below this
         self.desiredWaterMin = 50
           # stop heating if water below this
+        try:
+            infile = open(paramsFilename, "r")
+            params = json.load(infile)
+            infile.close()
+            print("Loaded saved params: ", params)
+            self.desiredWaterMin = params["desiredWaterMin"];
+            self.desiredHouseMin = params["desiredHouseMin"];
+        except:
+            print("Failed to load params, using defaults.")
+    def store_params(self, desiredHouseMin=None, desiredWaterMin=None):
+        if desiredWaterMin is not None:
+            self.desiredWaterMin = desiredWaterMin
+        if desiredHouseMin is not None:
+            self.desiredHouseMin = desiredHouseMin
+        # safe param values to a file
+        data = {
+          "desiredHouseMin": self.desiredHouseMin,
+          "desiredWaterMin": self.desiredWaterMin,
+        }
+        outfile = open(paramsFilename, "w")
+        json.dump(data, outfile)
+        outfile.close()
     def decide_if_heat(self, temps):
         house = temps.temperatures["house"]
         if house is None: return False
@@ -125,12 +149,12 @@ class Display:
             water = '??'
         else:
             self.set_color_by_temperature(temps.waterTemp)
-            water = '%2.0f' % (temps.waterTemp)
+            water = '%2.0f' % (temps.temperatures["water"])
         if temps.temperatures["house"] is None:
             house = '??'
             house = '%2.0f' % (temps.boardTemp)
         else:
-            house = '%2.0f' % (temps.houseTemp)
+            house = '%2.0f' % (temps.temperatures["house"])
         line1 = 'Water '+water+' Room '+house
         
         if can_display:
@@ -477,6 +501,8 @@ class MyNetwork:
               except:
                 queryWater = params.desiredWaterMin
 
+              params.store_params(desiredHouseMin=queryHouse, desiredWaterMin=queryWater)
+
 ### OLD, reading all input
 #               cl_file = cl.makefile('rwb', 0)
 #               while True:
@@ -485,8 +511,8 @@ class MyNetwork:
 #                       break
                 
               response = get_html('index.html')
-              response = response.replace('TempH', str(temps.houseTemp))
-              response = response.replace('TempW', str(temps.waterTemp))
+              response = response.replace('TempH', str(temps.temperatures["house"]))
+              response = response.replace('TempW', str(temps.temperatures["water"]))
               response = response.replace('DefaultHouseQuery', str(queryHouse))
               response = response.replace('DefaultWaterQuery', str(queryWater))
               response = response.replace('HeatingShould', str(should_heat))
