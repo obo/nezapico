@@ -47,6 +47,8 @@ class Stats:
         self.starttime = time.time()
         self.heating_runtime_sum = 0
         self.heating_starttime = None
+        self.electric_runtime_sum = 0
+        self.electric_starttime = None
     def uptime_hours(self):
         return (time.time() - self.starttime)/3600
     def start_heating(self):
@@ -61,6 +63,22 @@ class Stats:
     def operated_hours(self):
         current_segment = 0 if self.heating_starttime is None else time.time()-self.heating_starttime
         return (self.heating_runtime_sum + current_segment)/3600
+
+    def monitor_electric_heating(self, electric_running):
+        if electric_running:
+            if self.electric_starttime is None:
+                self.electric_starttime = time.time()
+            else:
+                print("Electric heating running")
+        else: # electric_not_running
+            if self.electric_starttime is None:
+                print("Electric heating not running")
+            else:
+                self.electric_runtime_sum += time.time()-self.electric_starttime
+                self.electric_starttime = None
+    def electric_operated_hours(self):
+        current_segment = 0 if self.electric_starttime is None else time.time()-self.electric_starttime
+        return (self.electric_runtime_sum + current_segment)/3600
 
 class Params:
     # constants and decisions about heating
@@ -172,15 +190,15 @@ class Display:
                 wifistr = ' no'
         else:
             wifistr = ' --'
-        if heating and should_heat:
+        if heating.heating_running and should_heat:
             # rotstates = '-\|/' # backslash not available
             rotstates = '<^>v'
             self.rotation_state += 1
             self.rotation_state %= 4
             heatstr = rotstates[self.rotation_state]
-        elif heating and not should_heat:
+        elif heating.heating_running and not should_heat:
             heatstr =  'v' # will stop
-        elif not heating and should_heat:
+        elif not heating.heating_running and should_heat:
             heatstr =  '^' # will start
         else:
             heatstr = '.'
@@ -207,9 +225,30 @@ class Heating:
         self.lastOFFtime = 0 # when did I last turn the heating off
         self.params = params
     
-    def set_heating(self, stats, should_heat, now = time.time()):
+    def guess_electric_heating_running(self, temps):
+        # guess based on temp differences if electric heating is on
+        intemp = temps.temperatures["heaterIn"]
+        outtemp = temps.temperatures["heaterOut"]
+        if intemp is None or outtemp is None:
+            return None
+        return (outtemp - intemp > 2) # more than 2 degrees means heating
+
+    def set_heating(self, stats, temps, should_heat, now = time.time()):
         # start or stop heating, but only if not switched too recenlty
-        if self.heating_running:
+        # immediately stop our heating if we diagnose that electric
+        # heating is on
+
+        electric_guessed = self.guess_electric_heating_running(temps)
+        stats.monitor_electric_heating(electric_guessed)
+
+        # first check if electric heating is on
+        if electric_guessed:
+            # immediate stop!
+            self.lastOFFtime = now
+            self.relay.value(0)
+            self.heating_running = False
+            stats.stop_heating()
+        elif self.heating_running:
             if not should_heat:
                 if now - self.lastONtime > params.min_runtime_minutes*60:
                     # do not run less than 3 minutes
@@ -227,20 +266,10 @@ class Heating:
                     ## DEBUG!! NESPOUSTIM
                     self.heating_running = True
                     stats.start_heating()
-class FakeHeating (Heating):
-    def __init__(self, relayPIN, params):
-        print("FAKE Heating")
-    def set_heating(**kwargs):
-        print("FAKE set_heating")
-        
 
 params = Params()
 
 heating = Heating(relayPIN, params)
-# if on_raspberry:
-#     heating = Heating(relayPIN, params)
-# else:
-#     heating = FakeHeating(relayPIN, params)
 
 
 class Temperatures:
@@ -509,16 +538,22 @@ class MyNetwork:
 #                   line = cl_file.readline()
 #                   if not line or line == b'\r\n':
 #                       break
-                
+              guessed_electric = heating.guess_electric_heating_running(temps)
+              
+              tempsStr = " | ".join([("%s: %s"%(n.title(), "%.1f"%t if t is not None else "--"))
+                for n, t in temps.temperatures.items()])
+
               response = get_html('index.html')
-              response = response.replace('TempH', str(temps.temperatures["house"]))
-              response = response.replace('TempW', str(temps.temperatures["water"]))
+              response = response.replace('TempsStr', str(tempsStr))
+              # response = response.replace('TempW', str(temps.temperatures["water"]))
               response = response.replace('DefaultHouseQuery', str(queryHouse))
               response = response.replace('DefaultWaterQuery', str(queryWater))
               response = response.replace('HeatingShould', str(should_heat))
-              response = response.replace('HeatingRunning', str(heating))
+              response = response.replace('HeatingRunning', str(heating.heating_running))
+              response = response.replace('ElectricRunning', str(guessed_electric))
               response = response.replace('UptimeHours', str(stats.uptime_hours()))
               response = response.replace('OperationHours', str(stats.operated_hours()))
+              response = response.replace('ElectricHours', str(stats.electric_operated_hours()))
             
               if on_raspberry:
                 cl.send('HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
@@ -565,12 +600,12 @@ while True:
         lastreadtime = now
         # Consider heating
         should_heat = params.decide_if_heat(temps)
-        heating.set_heating(stats, should_heat, now)
+        heating.set_heating(stats, temps, should_heat, now)
         print('Read temperatures, should heat? ', should_heat, '; heating running? ', heating.heating_running)
     
-    lcd.report(stats, mynetwork, temps, heating.heating_running, should_heat)
+    lcd.report(stats, mynetwork, temps, heating, should_heat)
     if can_network:
-        mynetwork.handle_network_requests(stats, temps, heating.heating_running, should_heat)
+        mynetwork.handle_network_requests(stats, temps, heating, should_heat)
     else:
         time.sleep(sleeptime)
     if stats.uptime_hours() > 48:

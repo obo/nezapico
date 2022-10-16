@@ -7,16 +7,17 @@
     <body>
         <h1>Pico W Heating</h1>
         <p>Temperatures</p>
-        <p>Water: TempW | House: TempH</p>
+        <p>TempsStr</p>
         <p>Heating</p>
-        <p>Should be heating: HeatingShould | Running: HeatingRunning</p>
+        <p>Should be heating: HeatingShould | Running: HeatingRunning | Electric running: ElectricRunning</p>
         </hr>
         <p>Uptime: UptimeHours</p>
         <p>Heating Hours: OperationHours</p>
+        <p>Electric Hours: ElectricHours</p>
     	<p>
 	<form method="GET">
 	Warm house if colder than
-	<input type="number" id="house" name="house" value="DefaultHouseQuery"/>.
+	<input type="number" id="house" name="house" value="DefaultHouseQuery"/>
 	and water warmer than
 	<input type="number" id="water" name="water" value="DefaultWaterQuery"/>.
 	<input type="submit" name="Save" value="Save"/>
