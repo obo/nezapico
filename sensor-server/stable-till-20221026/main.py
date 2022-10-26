@@ -1,44 +1,30 @@
+import rp2
 try:
-    import rp2
-    import ubinascii
-    import machine
-    import onewire, ds18x20
-    on_raspberry = True
-except:
-    import fake_machine as machine
-    import fake_ds18x20 as ds18x20
-    import fake_onewire as onewire
-    on_raspberry = False
-try:
-    if on_raspberry:
-        # on raspberry, we need network
-        import network
-        import urequests as requests
-        # load custom credentials
-        from secrets import secrets
-    else:
-        import requests
-    import json
+    import network
     import socket
+    import urequests as requests
+    # load custom credentials
+    from secrets import secrets
     can_network = True
 except:
-    print("CANNOT NETWORK")
     can_network = False
+import ubinascii
+import machine
 import time
 import select
 try:
-    import RGB1602 # the display
-    # https://www.waveshare.com/wiki/LCD1602_RGB_Module#Download_the_demo
-    # Then I flashed the .uf2 file onto pico
-    #  (i.e. connect USB while holding the bootsel button and then copy the file to pico)
-    can_display = True
+  import RGB1602 # the display
+  # https://www.waveshare.com/wiki/LCD1602_RGB_Module#Download_the_demo
+  # Then I flashed the .uf2 file onto pico
+  #  (i.e. connect USB while holding the bootsel button and then copy the file to pico)
+  can_display = True
 except:
     can_display = False
 
+import onewire, ds18x20
 
 relayPIN = 14
 thermoPIN = 15
-paramsFilename = "parameters.txt"
 
 
 class Stats:
@@ -47,8 +33,6 @@ class Stats:
         self.starttime = time.time()
         self.heating_runtime_sum = 0
         self.heating_starttime = None
-        self.electric_runtime_sum = 0
-        self.electric_starttime = None
     def uptime_hours(self):
         return (time.time() - self.starttime)/3600
     def start_heating(self):
@@ -64,25 +48,6 @@ class Stats:
         current_segment = 0 if self.heating_starttime is None else time.time()-self.heating_starttime
         return (self.heating_runtime_sum + current_segment)/3600
 
-    def monitor_electric_heating(self, electric_running):
-        if electric_running:
-            if self.electric_starttime is None:
-                self.electric_starttime = time.time()
-            else:
-                print("Electric heating running")
-        else: # electric_not_running
-            if self.electric_starttime is None:
-                print("Electric heating not running")
-            else:
-                self.electric_runtime_sum += time.time()-self.electric_starttime
-                self.electric_starttime = None
-    def electric_operated_hours(self):
-        current_segment = 0 if self.electric_starttime is None else time.time()-self.electric_starttime
-        return (self.electric_runtime_sum + current_segment)/3600
-
-def ucfirst(s):
-    return s[0].upper() + s[1:]
-
 class Params:
     # constants and decisions about heating
     def __init__(self):
@@ -90,46 +55,12 @@ class Params:
           # do not run heating for less than 3 minutes
         self.min_stoptime_minutes = 10
           # do not stop hearing for less than 10 minutes
-        self.desiredHouseMin = 20
-          # start heating if house below this
-        self.desiredWaterMin = 50
-          # stop heating if water below this
-        try:
-            infile = open(paramsFilename, "r")
-            params = json.load(infile)
-            infile.close()
-            print("Loaded saved params: ", params)
-            self.desiredWaterMin = params["desiredWaterMin"];
-            self.desiredHouseMin = params["desiredHouseMin"];
-        except:
-            print("Failed to load params, using defaults.")
-    def store_params(self, desiredHouseMin=None, desiredWaterMin=None):
-        if desiredWaterMin is not None:
-            self.desiredWaterMin = desiredWaterMin
-        if desiredHouseMin is not None:
-            self.desiredHouseMin = desiredHouseMin
-        # safe param values to a file
-        data = {
-          "desiredHouseMin": self.desiredHouseMin,
-          "desiredWaterMin": self.desiredWaterMin,
-        }
-        outfile = open(paramsFilename, "w")
-        json.dump(data, outfile)
-        outfile.close()
     def decide_if_heat(self, temps):
-        house = temps.temperatures["house"]
-        if house is None: return False
-        water = temps.temperatures["water"]
-        if water is None: return False
         # decide if we should heat
-        should_heat = (house < self.desiredHouseMin and water > self.desiredWaterMin)
-        #if not should_heat:
-        #    # second option: heat if house is cold
-        #    should_heat = (temps.houseTemp < 10 and temps.waterTemp > 40)
+        should_heat = (temps.houseTemp < 15 and temps.waterTemp > 50)
         if not should_heat:
-            # safety option: if water too hot, free the capacity regardless
-            # house temperature
-            should_heat = (water > 80)
+            # second option: heat if house is cold
+            should_heat = (temps.houseTemp < 10 and temps.waterTemp > 40)
         ## Debugging heating: every 10 seconds switch on and off
         #should_heat = (time.time() - stats.starttime) % 20 < 10
         return should_heat
@@ -165,17 +96,17 @@ class Display:
         if can_display:
             self.lcd.setRGB(red, 0, blue)
     def report(self, stats, mynetwork, temps, heating, should_heat):
-        if temps.temperatures["water"] is None:
+        if temps.waterRomIDX == -1:
             self.set_color_for_failure()
             water = '??'
         else:
-            self.set_color_by_temperature(temps.temperatures["water"])
-            water = '%2.0f' % (temps.temperatures["water"])
-        if temps.temperatures["house"] is None:
+            self.set_color_by_temperature(temps.waterTemp)
+            water = '%2.0f' % (temps.waterTemp)
+        if temps.houseRomIDX == -1:
             house = '??'
             house = '%2.0f' % (temps.boardTemp)
         else:
-            house = '%2.0f' % (temps.temperatures["house"])
+            house = '%2.0f' % (temps.houseTemp)
         line1 = 'Water '+water+' Room '+house
         
         if can_display:
@@ -193,18 +124,15 @@ class Display:
                 wifistr = ' no'
         else:
             wifistr = ' --'
-        guessed_electric = heating.guess_electric_heating_running(temps)
-        if guessed_electric:
-            heatstr = 'E' # we are guessing that the electric heating is on
-        elif heating.heating_running and should_heat:
+        if heating and should_heat:
             # rotstates = '-\|/' # backslash not available
             rotstates = '<^>v'
             self.rotation_state += 1
             self.rotation_state %= 4
             heatstr = rotstates[self.rotation_state]
-        elif heating.heating_running and not should_heat:
+        elif heating and not should_heat:
             heatstr =  'v' # will stop
-        elif not heating.heating_running and should_heat:
+        elif not heating and should_heat:
             heatstr =  '^' # will start
         else:
             heatstr = '.'
@@ -231,30 +159,9 @@ class Heating:
         self.lastOFFtime = 0 # when did I last turn the heating off
         self.params = params
     
-    def guess_electric_heating_running(self, temps):
-        # guess based on temp differences if electric heating is on
-        intemp = temps.temperatures["heaterIn"]
-        outtemp = temps.temperatures["heaterOut"]
-        if intemp is None or outtemp is None:
-            return None
-        return (outtemp - intemp > 2) # more than 2 degrees means heating
-
-    def set_heating(self, stats, temps, should_heat, now = time.time()):
+    def set_heating(self, stats, should_heat, now = time.time()):
         # start or stop heating, but only if not switched too recenlty
-        # immediately stop our heating if we diagnose that electric
-        # heating is on
-
-        electric_guessed = self.guess_electric_heating_running(temps)
-        stats.monitor_electric_heating(electric_guessed)
-
-        # first check if electric heating is on
-        if electric_guessed:
-            # immediate stop!
-            self.lastOFFtime = now
-            self.relay.value(0)
-            self.heating_running = False
-            stats.stop_heating()
-        elif self.heating_running:
+        if self.heating_running:
             if not should_heat:
                 if now - self.lastONtime > params.min_runtime_minutes*60:
                     # do not run less than 3 minutes
@@ -268,7 +175,8 @@ class Heating:
                 if now - self.lastOFFtime > params.min_stoptime_minutes*60:
                     # do not pause for less than 10 minutes
                     self.lastONtime = now
-                    self.relay.value(1)
+                    ## self.relay.value(1)
+                    ## DEBUG!! NESPOUSTIM
                     self.heating_running = True
                     stats.start_heating()
 
@@ -289,82 +197,52 @@ class Temperatures:
 
         
     def find_thermometers(self):
-        thermometers = {
-          # thermoWater:
-          "water" : bytearray(b'(D\xc1\x81\xe3\x8f<\x07'),
-          # thermoHouse:
-          "house" : bytearray(b'(\x956\x81\xe3w<\xec'),
-          "heaterIn" : bytearray(b'(AAAA'),
-          "heaterOut" : bytearray(b'(AAAA'),
-        }
+        thermoHouse = bytearray(b'(\x956\x81\xe3w<\xec')
+        thermoWater = bytearray(b'(D\xc1\x81\xe3\x8f<\x07')
 
         # Find thermometers
         ds_pin = machine.Pin(self.thermoPIN)
         self.ds_sensor = ds18x20.DS18X20(onewire.OneWire(ds_pin))
         self.roms = self.ds_sensor.scan()
-        # # DEBUG:
-        # self.roms = [bytearray(b'(D\xc1\x81\xe3\x8f<\x07'), bytearray(b'(\x956\x81\xe3w<\xec')]
         print('Found DS devices (thermometers): ', self.roms)
-        self.thermoIDX = dict.fromkeys(thermometers.keys())
-          # thermometer name -> thermometer index
+        self.houseRomIDX = -1
+        self.waterRomIDX = -1
         for i in range(len(self.roms)):
-            print("I", i)
-            print("type", type(self.roms))
-            print("type", type(self.roms[i]))
-            r = self.roms[i]
-            print("Who's this thermo?", self.roms[i])
-            # can't hash bytearrays, so walk through dictionary
-            t = None # this termometer's name
-            for k, v in thermometers.items():
-                print("  Is it?", v)
-                if v == r:
-                    print("  yes!", k)
-                    t = k # found the thermometer
-            if t is not None:
-              self.thermoIDX[t] = i
-            else:
-              print("Found unexpected thermometer", r, "at index", i)
-            # self.houseRomIDX = i if self.roms[i] == thermoHouse else self.houseRomIDX
-            # self.waterRomIDX = i if self.roms[i] == thermoWater else self.waterRomIDX
+            self.houseRomIDX = i if self.roms[i] == thermoHouse else self.houseRomIDX
+            self.waterRomIDX = i if self.roms[i] == thermoWater else self.waterRomIDX
         #assert self.houseRomIDX != -1, "Failed to find house thermometer"
         #assert self.waterRomIDX != -1, "Failed to find water thermometer"
-        for n in thermometers.keys():
-            if self.thermoIDX[n] is None:
-                print("Failed to find thermometer:", n)
-        self.temperatures = dict.fromkeys(thermometers.keys())
-          # thermometer name -> thermometer index
-        # self.found_thermometers = self.houseRomIDX != -1 and self.waterRomIDX != -1
-        # self.houseTemp = 0.0
-        # self.waterTemp = 0.0
+        if self.houseRomIDX == -1:
+            print("Failed to find house thermometer")
+        if self.waterRomIDX == -1:
+            print("Failed to find water thermometer")
+        self.found_thermometers = self.houseRomIDX != -1 and self.waterRomIDX != -1
+        self.houseTemp = 0.0
+        self.waterTemp = 0.0
     def update(self):
-        print("update called, we have these: ", self.thermoIDX)
         data = self.onboard_tempsensor.read_u16() * self.conversion_factor
         self.boardTemp = 27-(data-0.706)/0.001721
-        if len(self.roms) > 0:
-            # some thermometers were found
+        if self.found_thermometers:
             # some strange waiting needed
             self.ds_sensor.convert_temp()
             time.sleep_ms(750)
             temps = [self.ds_sensor.read_temp(rom) for rom in self.roms]
-            print(temps)
-            for t, idx in self.thermoIDX.items():
-                if idx is not None:
-                    self.temperatures[t] = temps[idx]
-            # self.houseTemp = temps[self.houseRomIDX]
-            # self.waterTemp = temps[self.waterRomIDX]
+            #print(temps)
+            self.houseTemp = temps[self.houseRomIDX]
+            self.waterTemp = temps[self.waterRomIDX]
         else:
             print("Retrying to find thermometers")
             self.find_thermometers()
 
 temps = Temperatures(thermoPIN)
-# print('House temp: ', temps.houseTemp)
-# print('Water temp: ', temps.waterTemp)
-# print('Board temp: ', temps.boardTemp)
-# 
+print('House temp: ', temps.houseTemp)
+print('Water temp: ', temps.waterTemp)
+print('Board temp: ', temps.boardTemp)
+
 temps.update()
-for t, temp in temps.temperatures.items():
-    print('temp in', t, ':', temp)
-# print('Water temp: ', temps.waterTemp)
+print('House temp: ', temps.houseTemp)
+print('Water temp: ', temps.waterTemp)
+print('Board temp: ', temps.boardTemp)
 
 #print(ds_sensor.read_temp(houseTemp))
 
@@ -390,13 +268,7 @@ watchdog = DelayedWatchdog()
 
 class MyNetwork:
     def __init__(self):
-        if on_raspberry:
-            self.got_wlan = False
-            self.use_port = 80
-        else:
-            # assuming network is provided
-            self.got_wlan = True
-            self.use_port = 8080
+        self.got_wlan = False
         self.get_listening_socket()
 
     def get_wlan(self):
@@ -479,20 +351,18 @@ class MyNetwork:
         if self.got_wlan:
             try:
                 # HTTP server with socket
-                addr = socket.getaddrinfo('0.0.0.0', self.use_port)[0][-1]
-                print('Will be listening on', addr)
+                addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
+                print('Listening on', addr)
                 
                 s = socket.socket()
                 # s.setsockopt(s.SOL_SOCKET, s.SO_REUSEADDR,1)
                       # this is not defined on micropython
                 s.bind(addr)
                 s.listen(1)
-                print('Listening on', addr)
                 self.socket = s
                 self.got_socket = True
             except:
                 self.socket = 0
-                print('Failed to get listening socket')
                 self.got_socket = False
 
     def handle_network_requests(self, stats, temps, heating, should_heat):
@@ -513,62 +383,22 @@ class MyNetwork:
             if s1 is self.socket:
               cl, addr = self.socket.accept()
               print('Client connected from', addr)
-
-              query = cl.recv(1024)
-              print('QUERY:', query)
-              
-              query = str(query)
-              
-              # QUERY: b'GET /?house=30&water=24&Save=Save HTTP/1.1\r\nHost: localhost:...
-              start = query.find('GET /?') + 6
-              end = query.find('HTTP', start)
-              args = query[start:end]
-              print('ARGS:', args)
-              try:
-                pairs = dict([pair.split('=') for pair in args.split('&')])
-              except:
-                pairs = {}
-              print('PAIRS:', pairs) # the args that we received
-              try:
-                queryHouse = 0+int(pairs["house"])
-              except:
-                queryHouse = params.desiredHouseMin
-              try:
-                queryWater = 0+int(pairs["water"])
-              except:
-                queryWater = params.desiredWaterMin
-
-              params.store_params(desiredHouseMin=queryHouse, desiredWaterMin=queryWater)
-
-### OLD, reading all input
-#               cl_file = cl.makefile('rwb', 0)
-#               while True:
-#                   line = cl_file.readline()
-#                   if not line or line == b'\r\n':
-#                       break
-              guessed_electric = heating.guess_electric_heating_running(temps)
-              
-              tempsStr = " | ".join([("%s: %s"%(ucfirst(n), "%.1f"%t if t is not None else "--"))
-                for n, t in temps.temperatures.items()])
-
+              cl_file = cl.makefile('rwb', 0)
+              while True:
+                  line = cl_file.readline()
+                  if not line or line == b'\r\n':
+                      break
+                
               response = get_html('index.html')
-              response = response.replace('TempsStr', str(tempsStr))
-              # response = response.replace('TempW', str(temps.temperatures["water"]))
-              response = response.replace('DefaultHouseQuery', str(queryHouse))
-              response = response.replace('DefaultWaterQuery', str(queryWater))
+              response = response.replace('TempH', str(temps.houseTemp))
+              response = response.replace('TempW', str(temps.waterTemp))
               response = response.replace('HeatingShould', str(should_heat))
-              response = response.replace('HeatingRunning', str(heating.heating_running))
-              response = response.replace('ElectricRunning', str(guessed_electric))
+              response = response.replace('HeatingRunning', str(heating))
               response = response.replace('UptimeHours', str(stats.uptime_hours()))
               response = response.replace('OperationHours', str(stats.operated_hours()))
-              response = response.replace('ElectricHours', str(stats.electric_operated_hours()))
             
-              if on_raspberry:
-                cl.send('HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
-                cl.send(response)
-              else:
-                cl.send(b'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
-                cl.send(response.encode())
+              cl.send('HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n')
+              cl.send(response)
               cl.close()
               print('Done serving')
         except OSError as e:
@@ -596,9 +426,7 @@ should_heat = None
 stats = Stats()
 while True:
     watchdog.feed() # this must be called regularly
-    print('Idling...', " ".join([("%s:%s"%(n, "%.1f"%t if t is not None else "--"))
-    for n, t in temps.temperatures.items()]))
-    # ]'Water: ', temps.temps["water"], '; House: ', temps.houseTemp, '; Board: ', temps.boardTemp, '; Up: ', stats.uptime_hours(), '; HoursOperated: ', stats.operated_hours())
+    print('Idling...', 'Water: ', temps.waterTemp, '; House: ', temps.houseTemp, '; Board: ', temps.boardTemp, '; Up: ', stats.uptime_hours(), '; HoursOperated: ', stats.operated_hours())
     now = time.time()
     #print('now: ', now, ', diff: ', now-lastreadtime)
     if now - lastreadtime > tempreaddelay:
@@ -608,13 +436,11 @@ while True:
         lastreadtime = now
         # Consider heating
         should_heat = params.decide_if_heat(temps)
-        heating.set_heating(stats, temps, should_heat, now)
+        heating.set_heating(stats, should_heat, now)
         print('Read temperatures, should heat? ', should_heat, '; heating running? ', heating.heating_running)
     
-    lcd.report(stats, mynetwork, temps, heating, should_heat)
+    lcd.report(stats, mynetwork, temps, heating.heating_running, should_heat)
     if can_network:
-        mynetwork.handle_network_requests(stats, temps, heating, should_heat)
-    time.sleep(sleeptime)
-    if stats.uptime_hours() > 48:
-        # safety reset every two days
-        os.system("sudo reboot")
+        mynetwork.handle_network_requests(stats, temps, heating.heating_running, should_heat)
+    else:
+        time.sleep(sleeptime)
