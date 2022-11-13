@@ -1,3 +1,8 @@
+# TODO
+
+- as soon as relay is set to ON, set watchdog (otherwise risking stuck while heating)
+- try-json, on fail ignore troubles
+
 # Usage
 
 - Record temperatures from mid and top tank thermometer along with what our sensor says.

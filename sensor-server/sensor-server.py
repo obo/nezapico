@@ -129,7 +129,7 @@ class Params:
         if not should_heat:
             # safety option: if water too hot, free the capacity regardless
             # house temperature
-            should_heat = (water > 80)
+            should_heat = (water > 55)
         ## Debugging heating: every 10 seconds switch on and off
         #should_heat = (time.time() - stats.starttime) % 20 < 10
         return should_heat
@@ -222,7 +222,7 @@ lcd=Display()
 lcd.set_color_for_failure()
 
 class Heating:
-    def __init__(self, relayPIN, params):
+    def __init__(self, relayPIN, watchdog, params):
         # Main relay for controlling the output
         self.relay = machine.Pin(relayPIN, machine.Pin.OUT)
         self.relay.value(0) # switch off by default
@@ -230,6 +230,7 @@ class Heating:
         self.lastONtime = 0 # when did I last turn the heating on
         self.lastOFFtime = 0 # when did I last turn the heating off
         self.params = params
+        self.watchdog = watchdog
     
     def guess_electric_heating_running(self, temps):
         # guess based on temp differences if electric heating is on
@@ -237,7 +238,7 @@ class Heating:
         outtemp = temps.temperatures["heaterOut"]
         if intemp is None or outtemp is None:
             return None
-        return (outtemp - intemp > 2) # more than 2 degrees means heating
+        return (outtemp - intemp > 27) # more than 7 degrees means heating
 
     def set_heating(self, stats, temps, should_heat, now = time.time()):
         # start or stop heating, but only if not switched too recenlty
@@ -268,13 +269,35 @@ class Heating:
                 if now - self.lastOFFtime > params.min_stoptime_minutes*60:
                     # do not pause for less than 10 minutes
                     self.lastONtime = now
+                    self.watchdog.start_immediately()
                     self.relay.value(1)
                     self.heating_running = True
                     stats.start_heating()
 
+class DelayedWatchdog:
+    # start the real hardware watchdog only after 5 minutes, for easier
+    # debugging
+    def __init__(self):
+        self.watchdog = None
+        self.inittime = time.time()
+    def start_immediately(self):
+        if not self.watchdog:
+            self.watchdog = machine.WDT(timeout=5*60*1000)
+    def feed(self):
+        if self.watchdog:
+            self.watchdog.feed()
+        else:
+            if time.time() - self.inittime > 60*3:
+                self.start_immediately()
+                # auto reboot when dead for more than a minute
+
+
+# hardware watchdog
+watchdog = DelayedWatchdog()
+
 params = Params()
 
-heating = Heating(relayPIN, params)
+heating = Heating(relayPIN, watchdog, params)
 
 
 class Temperatures:
@@ -294,8 +317,8 @@ class Temperatures:
           "water" : bytearray(b'(D\xc1\x81\xe3\x8f<\x07'),
           # thermoHouse:
           "house" : bytearray(b'(\x956\x81\xe3w<\xec'),
-          "heaterIn" : bytearray(b'(AAAA'),
-          "heaterOut" : bytearray(b'(AAAA'),
+          "heaterIn" : bytearray(b'(du\x81\xe3\xdd<\x07'),
+          "heaterOut" : bytearray(b'(\x8c\x19\x81\xe3P<\x19'),
         }
 
         # Find thermometers
@@ -368,23 +391,6 @@ for t, temp in temps.temperatures.items():
 
 #print(ds_sensor.read_temp(houseTemp))
 
-class DelayedWatchdog:
-    # start the real hardware watchdog only after 5 minutes, for easier
-    # debugging
-    def __init__(self):
-        self.watchdog = None
-        self.inittime = time.time()
-    def feed(self):
-        if self.watchdog:
-            self.watchdog.feed()
-        else:
-            if time.time() - self.inittime > 60*3:
-                self.watchdog = machine.WDT(timeout=5*60*1000)
-                # auto reboot when dead for more than a minute
-
-
-# hardware watchdog
-watchdog = DelayedWatchdog()
 
 
 
