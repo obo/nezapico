@@ -7,7 +7,7 @@ n = neopixel.NeoPixel(p, 8)
 
 # Draw a red gradient.
 for i in range(8):
-    n[i] = (i * 24, 0, i*24)
+    n[i] = (i * 24, 50,50)
 
 # Update the strip.
 n.write()
