@@ -2,6 +2,20 @@
 
 - as soon as relay is set to ON, set watchdog (otherwise risking stuck while heating)
 - try-json, on fail ignore troubles
+- rotary encoder for setting temps:
+  https://www.elektronik-kompendium.de/sites/raspberry-pi/2703131.htm
+  One more example with a handler:
+    https://www.elektronik-kompendium.de/sites/raspberry-pi/2703181.htm
+  idle:
+    +/-: nothing
+    click: move to water
+  water:
+    +/-:  set temporarily
+    click: confirm and move to house
+  house:
+    +/-:  set temporarily
+    click: confirm and move to idle
+- depth measurement
 
 # Usage
 
