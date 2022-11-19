@@ -136,13 +136,23 @@ class Params:
 
 class Display:
     def __init__(self):
+        global can_display
         if can_display:
-            self.lcd = RGB1602.RGB1602(16,2)
+            try:
+                self.lcd = RGB1602.RGB1602(16,2)
+            except:
+                print("Failed to init display, disabling.")
+                can_display = False
         self.rotation_state = 0
     def set_color_for_failure(self):
+        global can_display
         if can_display:
             # failure is yellow, not green, not blue, not red
-            self.lcd.setRGB(255, 255, 0)
+            try:
+                self.lcd.setRGB(255, 255, 0)
+            except:
+                print("Disabling display, some error")
+                can_display = False
     def set_color_by_temperature(self, temp):
         # temperatures above "nice" level are red (we get hot showers)
         # the max value is fully red
@@ -282,7 +292,8 @@ class DelayedWatchdog:
         self.inittime = time.time()
     def start_immediately(self):
         if not self.watchdog:
-            self.watchdog = machine.WDT(timeout=5*60*1000)
+            self.watchdog = machine.WDT(timeout=8388)
+            # strangely only 8 secs allowed, not my previous value: 5*60*1000)
     def feed(self):
         if self.watchdog:
             self.watchdog.feed()
@@ -317,8 +328,8 @@ class Temperatures:
           "water" : bytearray(b'(D\xc1\x81\xe3\x8f<\x07'),
           # thermoHouse:
           "house" : bytearray(b'(\x956\x81\xe3w<\xec'),
-          "heaterIn" : bytearray(b'(du\x81\xe3\xdd<\x07'),
-          "heaterOut" : bytearray(b'(\x8c\x19\x81\xe3P<\x19'),
+          "heaterIn" : bytearray(b'(\x8c\x19\x81\xe3P<\x19'),
+          "heaterOut" : bytearray(b'(du\x81\xe3\xdd<\x07'),
         }
 
         # Find thermometers
