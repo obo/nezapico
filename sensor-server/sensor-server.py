@@ -94,6 +94,8 @@ class Params:
           # start heating if house below this
         self.desiredWaterMin = 50
           # stop heating if water below this
+        self.desiredWaterMinNeverSaveLessThanThis = 40
+          # for safety reasons, never save lower value for water than this
         try:
             infile = open(paramsFilename, "r")
             params = json.load(infile)
@@ -111,7 +113,7 @@ class Params:
         # safe param values to a file
         data = {
           "desiredHouseMin": self.desiredHouseMin,
-          "desiredWaterMin": self.desiredWaterMin,
+          "desiredWaterMin": self.desiredWaterMin if self.desiredWaterMin > self.desiredWaterMinNeverSaveLessThanThis else self.desiredWaterMinNeverSaveLessThanThis,
         }
         outfile = open(paramsFilename, "w")
         json.dump(data, outfile)
@@ -513,16 +515,19 @@ class MyNetwork:
                 self.got_socket = False
 
     def handle_network_requests(self, stats, temps, heating, should_heat):
-        # handle network requests
+        # handle network requests; return True if we got a request
         if can_network:
             if not self.got_socket:
                 self.get_listening_socket()
 
             if self.got_socket:
-                self.respond_on_socket(stats, temps, heating, should_heat)
+                got_a_request = self.respond_on_socket(stats, temps, heating, should_heat)
+                print('Got a request?', got_a_request)
+                return got_a_request
 
     def respond_on_socket(self, stats, temps, heating, should_heat):
         # knowing that socket is ready, check connections
+        # return True if got a contact
         try:
           read_list = [self.socket] # which sockets to check
           readable, writable, errored = select.select(read_list, [], [], sleeptime)
@@ -588,6 +593,8 @@ class MyNetwork:
                 cl.send(response.encode())
               cl.close()
               print('Done serving')
+              return True
+          return False
         except OSError as e:
             cl.close()
             print('Connection closed')
@@ -609,6 +616,7 @@ print('After network')
 sleeptime = 1.5 # seconds
 tempreaddelay = 5 # seconds
 lastreadtime = time.time()
+lastcontactedtime = None
 should_heat = None
 stats = Stats()
 while True:
@@ -630,8 +638,13 @@ while True:
     
     lcd.report(stats, mynetwork, temps, heating, should_heat)
     if can_network:
-        mynetwork.handle_network_requests(stats, temps, heating, should_heat)
+        got_a_request = mynetwork.handle_network_requests(stats, temps, heating, should_heat)
+        if got_a_request:
+            lastcontactedtime = now
     time.sleep(sleeptime)
     if stats.uptime_hours() > 48:
         # safety reset every two days
+        os.system("sudo reboot")
+    if can_network and lastcontactedtime is not None and now - lastcontactedtime > 2*3600:
+        # safety reset after 2 hours of no contact with outside world
         os.system("sudo reboot")
