@@ -94,7 +94,7 @@ class Params:
           # start heating if house below this
         self.desiredWaterMin = 50
           # stop heating if water below this
-        self.desiredWaterMinNeverSaveLessThanThis = 40
+        self.desiredWaterMinNeverSaveLessThanThis = 33
           # for safety reasons, never save lower value for water than this
         try:
             infile = open(paramsFilename, "r")
@@ -228,6 +228,12 @@ class Display:
 #  0123456789012345
 #  Water 43 Room 22
 #  up99+,wifi OK  -\|/-\|/
+#
+#  Alternative ideas:
+#  0123456789012345
+#  W 43<50, R 22>10
+#  W 50>50, R  8<10
+#  up99+,wifi OK  -\|/-\|/
         
 
 lcd=Display()
@@ -330,8 +336,8 @@ class Temperatures:
           "water" : bytearray(b'(D\xc1\x81\xe3\x8f<\x07'),
           # thermoHouse:
           "house" : bytearray(b'(\x956\x81\xe3w<\xec'),
-          "heaterIn" : bytearray(b'(\x8c\x19\x81\xe3P<\x19'),
-          "heaterOut" : bytearray(b'(du\x81\xe3\xdd<\x07'),
+          "heaterIn" : bytearray(b'(du\x81\xe3\xdd<\x07'),
+          "heaterOut" : bytearray(b'(\x8c\x19\x81\xe3P<\x19'),
         }
 
         # Find thermometers
