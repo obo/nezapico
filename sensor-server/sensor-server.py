@@ -190,7 +190,7 @@ class Display:
             house = '%2.0f' % (temps.temperatures["house"])
         line1 = 'Water '+water+' Room '+house
         
-        if can_display:
+        if True and can_display:
             self.lcd.setCursor(0,0)
             self.lcd.printout(line1)
         up = int(stats.uptime_hours()/24)
@@ -222,7 +222,7 @@ class Display:
             heatstr = '.'
         line2 = 'up'+upstr+',wifi'+wifistr+'  '+heatstr
         
-        if can_display:
+        if True and can_display:
             self.lcd.setCursor(0,1)
             self.lcd.printout(line2)
 #  0123456789012345
@@ -651,6 +651,9 @@ while True:
     if stats.uptime_hours() > 48:
         # safety reset every two days
         os.system("sudo reboot")
-    if can_network and lastcontactedtime is not None and now - lastcontactedtime > 2*3600:
+    if lastcontactedtime is not None and now - lastcontactedtime > 2*3600:
         # safety reset after 2 hours of no contact with outside world
+        os.system("sudo reboot")
+    if lastcontactedtime is None and stats.uptime_hours() > 2:
+        # safety reset every 2 hours of no contact
         os.system("sudo reboot")
