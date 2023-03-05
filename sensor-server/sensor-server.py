@@ -69,10 +69,12 @@ class Stats:
             if self.electric_starttime is None:
                 self.electric_starttime = time.time()
             else:
-                print("Electric heating running")
+                pass
+                # print("Electric heating running")
         else: # electric_not_running
             if self.electric_starttime is None:
-                print("Electric heating not running")
+                pass
+                # print("Electric heating not running")
             else:
                 self.electric_runtime_sum += time.time()-self.electric_starttime
                 self.electric_starttime = None
@@ -170,10 +172,8 @@ class Display:
             # going red, between 100 and 255
             blue = 0
             red = int(100+(255-100)*(temp-nicetemp)/(nicetemp-mintemp))
-        print(red, blue, 0)
         red = max(0, min(255, red))
         blue = max(0, min(255, blue))
-        print(red, blue, 0)
         if can_display:
             self.lcd.setRGB(red, 0, blue)
     def report(self, stats, mynetwork, temps, heating, should_heat):
@@ -190,6 +190,7 @@ class Display:
             house = '%2.0f' % (temps.temperatures["house"])
         line1 = 'Water '+water+' Room '+house
         
+        print("[[", line1, "]]")
         if True and can_display:
             self.lcd.setCursor(0,0)
             self.lcd.printout(line1)
@@ -222,6 +223,7 @@ class Display:
             heatstr = '.'
         line2 = 'up'+upstr+',wifi'+wifistr+'  '+heatstr
         
+        print("[[", line2, "]]")
         if True and can_display:
             self.lcd.setCursor(0,1)
             self.lcd.printout(line2)
@@ -259,7 +261,7 @@ class Heating:
         return (outtemp - intemp > 27) # more than 7 degrees means heating
 
     def set_heating(self, stats, temps, should_heat, now = time.time()):
-        # start or stop heating, but only if not switched too recenlty
+        # start or stop heating, but only if not switched too recently
         # immediately stop our heating if we diagnose that electric
         # heating is on
 
@@ -267,7 +269,7 @@ class Heating:
         stats.monitor_electric_heating(electric_guessed)
 
         # first check if electric heating is on
-        if electric_guessed:
+        if False and electric_guessed: # DISABLED
             # immediate stop!
             self.lastOFFtime = now
             self.relay.value(0)
@@ -278,6 +280,7 @@ class Heating:
                 if now - self.lastONtime > params.min_runtime_minutes*60:
                     # do not run less than 3 minutes
                     self.lastOFFtime = now
+                    self.watchdog.start_immediately()
                     self.relay.value(0)
                     self.heating_running = False
                     stats.stop_heating()
@@ -293,7 +296,7 @@ class Heating:
                     stats.start_heating()
 
 class DelayedWatchdog:
-    # start the real hardware watchdog only after 5 minutes, for easier
+    # start the real hardware watchdog only after 1 minutes, for easier
     # debugging
     def __init__(self):
         self.watchdog = None
@@ -379,7 +382,7 @@ class Temperatures:
         # self.houseTemp = 0.0
         # self.waterTemp = 0.0
     def update(self):
-        print("update called, we have these: ", self.thermoIDX)
+        print("update called; thermometers: ", self.thermoIDX)
         data = self.onboard_tempsensor.read_u16() * self.conversion_factor
         self.boardTemp = 27-(data-0.706)/0.001721
         if len(self.roms) > 0:
@@ -388,7 +391,7 @@ class Temperatures:
             self.ds_sensor.convert_temp()
             time.sleep_ms(750)
             temps = [self.ds_sensor.read_temp(rom) for rom in self.roms]
-            print(temps)
+            print("update got temperatures: ", temps)
             for t, idx in self.thermoIDX.items():
                 if idx is not None:
                     self.temperatures[t] = temps[idx]
@@ -528,7 +531,7 @@ class MyNetwork:
 
             if self.got_socket:
                 got_a_request = self.respond_on_socket(stats, temps, heating, should_heat)
-                print('Got a request?', got_a_request)
+                print('Got a network request?', got_a_request)
                 return got_a_request
 
     def respond_on_socket(self, stats, temps, heating, should_heat):
