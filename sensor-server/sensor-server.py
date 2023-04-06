@@ -208,19 +208,19 @@ class Display:
             wifistr = ' --'
         guessed_electric = heating.guess_electric_heating_running(temps)
         if guessed_electric:
-            heatstr = 'E' # we are guessing that the electric heating is on
+            rotstates = 'Elec' # we are guessing that the electric heating is on
         elif heating.heating_running and should_heat:
             # rotstates = '-\|/' # backslash not available
             rotstates = '<^>v'
-            self.rotation_state += 1
-            self.rotation_state %= 4
-            heatstr = rotstates[self.rotation_state]
         elif heating.heating_running and not should_heat:
-            heatstr =  'v' # will stop
+            rotstates = 'v_v_' # will stop
         elif not heating.heating_running and should_heat:
-            heatstr =  '^' # will start
+            rotstates = '^.^.' # will start
         else:
-            heatstr = '.'
+            rotstates = '. . '
+        self.rotation_state += 1
+        self.rotation_state %= 4
+        heatstr = rotstates[self.rotation_state]
         line2 = 'up'+upstr+',wifi'+wifistr+'  '+heatstr
         
         print("[[", line2, "]]")
@@ -484,7 +484,7 @@ class MyNetwork:
         if wlan.status() != 3:
             #raise RuntimeError('Wi-Fi connection failed')
             print('Wi-Fi connection failed')
-            got_wlan = False
+            self.got_wlan = False
         else:
             led = machine.Pin('LED', machine.Pin.OUT)
             for i in range(wlan.status()):
@@ -495,7 +495,7 @@ class MyNetwork:
             print('Connected')
             status = wlan.ifconfig()
             print('ip = ' + status[0])
-            got_wlan = True
+            self.got_wlan = True
         self.wlan = wlan
 
     def get_listening_socket(self):
@@ -622,7 +622,7 @@ print('After network')
 
 
 # Listen for connections, with a non-blocking socket.accept
-sleeptime = 1.5 # seconds
+sleeptime = 1.0 # seconds
 tempreaddelay = 5 # seconds
 lastreadtime = time.time()
 lastcontactedtime = None
@@ -645,7 +645,10 @@ while True:
         heating.set_heating(stats, temps, should_heat, now)
         print('Read temperatures, should heat? ', should_heat, '; heating running? ', heating.heating_running)
     
-    lcd.report(stats, mynetwork, temps, heating, should_heat)
+    try:
+        lcd.report(stats, mynetwork, temps, heating, should_heat)
+    except:
+        print(" !!! Error reporting to the display")
     if can_network:
         got_a_request = mynetwork.handle_network_requests(stats, temps, heating, should_heat)
         if got_a_request:
@@ -654,9 +657,9 @@ while True:
     if stats.uptime_hours() > 48:
         # safety reset every two days
         os.system("sudo reboot")
-    if lastcontactedtime is not None and now - lastcontactedtime > 2*3600:
-        # safety reset after 2 hours of no contact with outside world
+    if lastcontactedtime is not None and now - lastcontactedtime > 60*30:
+        # safety reset after 30 mins of no contact with outside world
         os.system("sudo reboot")
-    if lastcontactedtime is None and stats.uptime_hours() > 2:
-        # safety reset every 2 hours of no contact
+    if lastcontactedtime is None and stats.uptime_hours() > 0.5:
+        # safety reset every 30 mins of no contact
         os.system("sudo reboot")
