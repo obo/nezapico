@@ -176,7 +176,7 @@ class Display:
         blue = max(0, min(255, blue))
         if can_display:
             self.lcd.setRGB(red, 0, blue)
-    def report(self, stats, mynetwork, temps, heating, should_heat):
+    def report(self, params, stats, mynetwork, temps, heating, should_heat):
         if temps.temperatures["water"] is None:
             self.set_color_for_failure()
             water = '??'
@@ -188,24 +188,28 @@ class Display:
             house = '%2.0f' % (temps.boardTemp)
         else:
             house = '%2.0f' % (temps.temperatures["house"])
-        line1 = 'Water '+water+' Room '+house
+        vals = [('%2.0f'%v) if v else '--'
+                for v in [temps.temperatures[n]
+                         for n in ['water','waterFromSun','heaterOut','house']]]
+        print(vals)
+        line1 = ('Wtr%s^%s>%s Rm%s' % tuple(vals))
         
         print("[[", line1, "]]")
         if True and can_display:
             self.lcd.setCursor(0,0)
             self.lcd.printout(line1)
-        up = int(stats.uptime_hours()/24)
-        upstr = '99+' if up > 99 else '%2id' % up
+        # up = int(stats.uptime_hours()/24)
+        # upstr = '99+' if up > 99 else '%2id' % up
         if can_network:
             if mynetwork.got_wlan:
                 if mynetwork.got_socket:
-                    wifistr = ' OK'
+                    wifistr = 'OK '
                 else:
                     wifistr = 'BAD'
             else:
-                wifistr = ' no'
+                wifistr = 'no '
         else:
-            wifistr = ' --'
+            wifistr = '-- '
         guessed_electric = heating.guess_electric_heating_running(temps)
         if guessed_electric:
             rotstates = 'Elec' # we are guessing that the electric heating is on
@@ -221,12 +225,18 @@ class Display:
         self.rotation_state += 1
         self.rotation_state %= 4
         heatstr = rotstates[self.rotation_state]
-        line2 = 'up'+upstr+',wifi'+wifistr+'  '+heatstr
+        # line2 = 'up'+upstr+',wifi'+wifistr+'  '+heatstr
+        line2 = 'Lim%2.0f-%2.0f wif%s%s' % (params.desiredWaterMin, params.desiredHouseMin, wifistr, heatstr)
         
         print("[[", line2, "]]")
         if True and can_display:
             self.lcd.setCursor(0,1)
             self.lcd.printout(line2)
+#  0123456789012345
+#  Wtr43^30>50 Rm22 
+#  Lim35-20 wiOK  x
+#
+#  current setup:
 #  0123456789012345
 #  Water 43 Room 22
 #  up99+,wifi OK  -\|/-\|/
@@ -254,7 +264,7 @@ class Heating:
     
     def guess_electric_heating_running(self, temps):
         # guess based on temp differences if electric heating is on
-        intemp = temps.temperatures["heaterIn"]
+        intemp = temps.temperatures["waterFromSun"]
         outtemp = temps.temperatures["heaterOut"]
         if intemp is None or outtemp is None:
             return None
@@ -339,7 +349,7 @@ class Temperatures:
           "water" : bytearray(b'(D\xc1\x81\xe3\x8f<\x07'),
           # thermoHouse:
           "house" : bytearray(b'(\x956\x81\xe3w<\xec'),
-          "heaterIn" : bytearray(b'(du\x81\xe3\xdd<\x07'),
+          "waterFromSun" : bytearray(b'(du\x81\xe3\xdd<\x07'),
           "heaterOut" : bytearray(b'(\x8c\x19\x81\xe3P<\x19'),
         }
 
@@ -622,7 +632,7 @@ print('After network')
 
 
 # Listen for connections, with a non-blocking socket.accept
-sleeptime = 1.0 # seconds
+sleeptime = 0.7 # seconds
 tempreaddelay = 5 # seconds
 lastreadtime = time.time()
 lastcontactedtime = None
@@ -645,8 +655,10 @@ while True:
         heating.set_heating(stats, temps, should_heat, now)
         print('Read temperatures, should heat? ', should_heat, '; heating running? ', heating.heating_running)
     
+    # only when debugging
+    # lcd.report(params, stats, mynetwork, temps, heating, should_heat)
     try:
-        lcd.report(stats, mynetwork, temps, heating, should_heat)
+        lcd.report(params, stats, mynetwork, temps, heating, should_heat)
     except:
         print(" !!! Error reporting to the display")
     if can_network:
