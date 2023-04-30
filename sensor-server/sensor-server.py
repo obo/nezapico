@@ -1,3 +1,4 @@
+import os
 try:
     import rp2
     import ubinascii
@@ -125,6 +126,10 @@ class Params:
         if house is None: return False
         water = temps.temperatures["water"]
         if water is None: return False
+        # consult also output temperature
+        heaterOut = temps.temperatures["heaterOut"]
+        if heaterOut is not None and heaterOut > water: water = heaterOut
+            # and pretend water is this warm, so heat more
         # decide if we should heat
         should_heat = (house < self.desiredHouseMin and water > self.desiredWaterMin)
         #if not should_heat:
@@ -427,7 +432,8 @@ for t, temp in temps.temperatures.items():
 
 
 class MyNetwork:
-    def __init__(self):
+    def __init__(self, watchdog):
+        self.watchdog = watchdog
         if on_raspberry:
             self.got_wlan = False
             self.use_port = 80
@@ -553,6 +559,8 @@ class MyNetwork:
           for s1 in readable:
             if s1 is self.socket:
               cl, addr = self.socket.accept()
+              # there used to be crashes here, start watchdog
+              self.watchdog.start_immediately()
               print('Client connected from', addr)
 
               query = cl.recv(1024)
@@ -627,7 +635,7 @@ def get_html(html_name):
 
 # initialize my failsafe networking
 print('Before network')
-mynetwork = MyNetwork()
+mynetwork = MyNetwork(watchdog)
 print('After network')
 
 
