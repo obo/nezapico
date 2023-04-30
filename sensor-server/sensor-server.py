@@ -1,4 +1,3 @@
-import os
 try:
     import rp2
     import ubinascii
@@ -129,6 +128,10 @@ class Params:
         # consult also output temperature
         heaterOut = temps.temperatures["heaterOut"]
         if heaterOut is not None and heaterOut > water: water = heaterOut
+            # and pretend water is this warm, so heat more
+        # consult also sun temperature
+        waterFromSun = temps.temperatures["waterFromSun"]
+        if waterFromSun is not None and waterFromSun > water: water = waterFromSun
             # and pretend water is this warm, so heat more
         # decide if we should heat
         should_heat = (house < self.desiredHouseMin and water > self.desiredWaterMin)
@@ -676,10 +679,10 @@ while True:
     time.sleep(sleeptime)
     if stats.uptime_hours() > 48:
         # safety reset every two days
-        os.system("sudo reboot")
+        machine.reset()
     if lastcontactedtime is not None and now - lastcontactedtime > 60*30:
         # safety reset after 30 mins of no contact with outside world
-        os.system("sudo reboot")
+        machine.reset()
     if lastcontactedtime is None and stats.uptime_hours() > 0.5:
         # safety reset every 30 mins of no contact
-        os.system("sudo reboot")
+        machine.reset()
