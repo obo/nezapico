@@ -699,7 +699,7 @@ while True:
         print('Read temperatures, should heat? ', should_heat, '; heating running? ', heating.heating_running)
     
     # only when debugging
-    lcd.report(params, stats, mynetwork, temps, heating, should_heat)
+    #lcd.report(params, stats, mynetwork, temps, heating, should_heat)
     try:
         lcd.report(params, stats, mynetwork, temps, heating, should_heat)
     except:
