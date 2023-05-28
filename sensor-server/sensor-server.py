@@ -35,6 +35,11 @@ try:
 except:
     can_display = False
 
+try:
+    from hcsr04 import HCSR04
+    depthSensor = HCSR04(trigger_pin=13, echo_pin=11)
+except:
+    depthSensor = None
 
 relayPIN = 14
 thermoPIN = 15
@@ -49,6 +54,9 @@ class Stats:
         self.heating_starttime = None
         self.electric_runtime_sum = 0
         self.electric_starttime = None
+        # garden water level
+        self.garden_water_level = -1
+        self.garden_water_measurements = []
     def uptime_hours(self):
         return (time.time() - self.starttime)/3600
     def start_heating(self):
@@ -64,6 +72,19 @@ class Stats:
         current_segment = 0 if self.heating_starttime is None else time.time()-self.heating_starttime
         return (self.heating_runtime_sum + current_segment)/3600
 
+    def update_garden_water_level(self):
+        if depthSensor is not None:
+            currlevel = depthSensor.distance_mm()
+            if currlevel == -1:
+                self.garden_water_measurements = []
+                self.garden_water_level = -1
+            else:
+                self.garden_water_measurements += [currlevel]
+                if len(self.garden_water_measurements) > 20:
+                    # keep only last 20 measurements
+                    self.garden_water_measurements = self.garden_water_measurements[1:]
+                self.garden_water_level = int(sum(self.garden_water_measurements)/len(self.garden_water_measurements))
+                print("Garden:", self.garden_water_measurements, "...avg:", self.garden_water_level)
     def monitor_electric_heating(self, electric_running):
         if electric_running:
             if self.electric_starttime is None:
@@ -123,8 +144,9 @@ class Params:
     def decide_if_heat(self, temps):
         house = temps.temperatures["house"]
         if house is None: return False
-        water = temps.temperatures["water"]
-        if water is None: return False
+        waterFromWood = temps.temperatures["water"]
+        if waterFromWood is None: return False
+        water = waterFromWood # collect max across all temps
         # consult also output temperature
         heaterOut = temps.temperatures["heaterOut"]
         if heaterOut is not None and heaterOut > water: water = heaterOut
@@ -141,7 +163,7 @@ class Params:
         if not should_heat:
             # safety option: if water too hot, free the capacity regardless
             # house temperature
-            should_heat = (water > 55)
+            should_heat = (waterFromWood > 57)
         ## Debugging heating: every 10 seconds switch on and off
         #should_heat = (time.time() - stats.starttime) % 20 < 10
         return should_heat
@@ -211,13 +233,13 @@ class Display:
         if can_network:
             if mynetwork.got_wlan:
                 if mynetwork.got_socket:
-                    wifistr = 'OK '
+                    wifistr = '+'
                 else:
-                    wifistr = 'BAD'
+                    wifistr = 'x'
             else:
-                wifistr = 'no '
+                wifistr = '.'
         else:
-            wifistr = '-- '
+            wifistr = '-'
         guessed_electric = heating.guess_electric_heating_running(temps)
         if guessed_electric:
             rotstates = 'Elec' # we are guessing that the electric heating is on
@@ -234,7 +256,14 @@ class Display:
         self.rotation_state %= 4
         heatstr = rotstates[self.rotation_state]
         # line2 = 'up'+upstr+',wifi'+wifistr+'  '+heatstr
-        line2 = 'Lim%2.0f-%2.0f wif%s%s' % (params.desiredWaterMin, params.desiredHouseMin, wifistr, heatstr)
+        if stats.garden_water_level == -1:
+            gardenstr = '-'
+        else:
+            lo = 0
+            hi = 2020
+            k = 9-int((max(stats.garden_water_level,lo)-lo)/(hi-lo)*9)
+            gardenstr = '%1i' % (k)
+        line2 = 'Lim%2.0f-%2.0f G%s wi%s%s' % (params.desiredWaterMin, params.desiredHouseMin, gardenstr, wifistr, heatstr)
         
         print("[[", line2, "]]")
         if True and can_display:
@@ -606,6 +635,8 @@ class MyNetwork:
               response = get_html('index.html')
               response = response.replace('TempsStr', str(tempsStr))
               # response = response.replace('TempW', str(temps.temperatures["water"]))
+              response = response.replace('GardenWaterMeasurements', str(stats.garden_water_measurements))
+              response = response.replace('GarderWaterLevel', str(stats.garden_water_level))
               response = response.replace('DefaultHouseQuery', str(queryHouse))
               response = response.replace('DefaultWaterQuery', str(queryWater))
               response = response.replace('HeatingShould', str(should_heat))
@@ -657,6 +688,7 @@ while True:
     now = time.time()
     #print('now: ', now, ', diff: ', now-lastreadtime)
     if now - lastreadtime > tempreaddelay:
+        stats.update_garden_water_level()
         temps.update()
         #houseTemp = ds_sensor.read_temp(thermoHouse)
         #waterTemp = ds_sensor.read_temp(thermoWater)
@@ -667,7 +699,7 @@ while True:
         print('Read temperatures, should heat? ', should_heat, '; heating running? ', heating.heating_running)
     
     # only when debugging
-    # lcd.report(params, stats, mynetwork, temps, heating, should_heat)
+    lcd.report(params, stats, mynetwork, temps, heating, should_heat)
     try:
         lcd.report(params, stats, mynetwork, temps, heating, should_heat)
     except:

@@ -12,6 +12,7 @@
         <p>Should be heating: HeatingShould | Running: HeatingRunning | Electric running: ElectricRunning</p>
         </hr>
         <p>Uptime: UptimeHours</p>
+        <p>Garden Water Level: GarderWaterLevel</p>
         <p>Heating Hours: OperationHours</p>
         <p>Electric Hours: ElectricHours</p>
         <p>Current Limits: Warm if house colder than DefaultHouseQuery and water warmer than DefaultWaterQuery.</p>
@@ -28,6 +29,11 @@
 	Predefined:
 	<form method="GET">
 	<input type="hidden" id="house" name="house" value="20"/>
+	<input type="hidden" id="water" name="water" value="90"/>
+	<input type="submit" name="Compfy" value="Summer: 20-90"/>
+	</form>
+	<form method="GET">
+	<input type="hidden" id="house" name="house" value="20"/>
 	<input type="hidden" id="water" name="water" value="50"/>
 	<input type="submit" name="Compfy" value="Compfy: 20-50"/>
 	</form>
@@ -42,5 +48,7 @@
 	<input type="submit" name="Compfy" value="Aggresive: 20-30"/>
 	</form>
 	</p>
+	<hr/
+	<p>Garden Water Measurements: GardenWaterMeasurements</p>
     </body>
 </html>

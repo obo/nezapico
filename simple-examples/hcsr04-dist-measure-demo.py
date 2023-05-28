@@ -6,8 +6,10 @@
 import machine
 import time
 
+print("Starting")
 from hcsr04 import HCSR04
-sensor = HCSR04(trigger_pin=10, echo_pin=11)
+sensor = HCSR04(trigger_pin=13, echo_pin=11)
+print(sensor)
 
 import neopixel
 # 8 LED strip connected to X7.
@@ -35,4 +37,4 @@ while True:
       n[i] = (100,0,0)
 
   n.write()
-  time.sleep_ms(500)
+  time.sleep(3)
