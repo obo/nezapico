@@ -20,6 +20,7 @@
 	<form method="GET">
 	Warm house if colder than
 	<input type="number" id="house" name="house" value="DefaultHouseQuery"/>
+	<br/>
 	and water warmer than
 	<input type="number" id="water" name="water" value="DefaultWaterQuery"/>.
 	<input type="submit" name="Save" value="Save"/>
@@ -30,7 +31,7 @@
 	<form method="GET">
 	<input type="hidden" id="house" name="house" value="20"/>
 	<input type="hidden" id="water" name="water" value="90"/>
-	<input type="submit" name="Compfy" value="Summer: 20-90"/>
+	<input type="submit" name="Summer" value="Summer: 20-90"/>
 	</form>
 	<form method="GET">
 	<input type="hidden" id="house" name="house" value="20"/>
@@ -40,15 +41,20 @@
 	<form method="GET">
 	<input type="hidden" id="house" name="house" value="20"/>
 	<input type="hidden" id="water" name="water" value="35"/>
-	<input type="submit" name="Compfy" value="Common: 20-35"/>
+	<input type="submit" name="Common" value="Common: 20-35"/>
 	</form>
 	<form method="GET">
 	<input type="hidden" id="house" name="house" value="20"/>
 	<input type="hidden" id="water" name="water" value="30"/>
-	<input type="submit" name="Compfy" value="Aggresive: 20-30"/>
+	<input type="submit" name="Aggresive" value="Aggresive: 20-30"/>
+	</form>
+	<form method="GET">
+	<input type="hidden" id="house" name="house" value="15"/>
+	<input type="hidden" id="water" name="water" value="-1"/>
+	<input type="submit" name="WinterPreHeat" value="WinterPreHeat: 15"/>
 	</form>
 	</p>
 	<hr/
-	<p>Garden Water Measurements: GardenWaterMeasurements</p>
+	<p>Garden Water Measurements:<br/>GardenWaterMeasurements</p>
     </body>
 </html>

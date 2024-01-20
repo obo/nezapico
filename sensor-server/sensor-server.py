@@ -144,8 +144,14 @@ class Params:
     def decide_if_heat(self, temps):
         house = temps.temperatures["house"]
         if house is None: return False
+          # if we do not know house temperature, we cannot decide
+        if self.desiredWaterMin < 0:
+          # winter mode, we ignore availability of water heat
+          return (house < self.desiredHouseMin)
+        # the following decides if we should heat based on temperatures
         waterFromWood = temps.temperatures["water"]
         if waterFromWood is None: return False
+          # if we lost termometers, don't consider deciding
         water = waterFromWood # collect max across all temps
         # consult also output temperature
         heaterOut = temps.temperatures["heaterOut"]
@@ -263,7 +269,8 @@ class Display:
             hi = 2020
             k = 9-int((max(stats.garden_water_level,lo)-lo)/(hi-lo)*9)
             gardenstr = '%1i' % (k)
-        line2 = 'Lim%2.0f-%2.0f G%s wi%s%s' % (params.desiredWaterMin, params.desiredHouseMin, gardenstr, wifistr, heatstr)
+        waterlimstr = ("--" if params.desiredWaterMin < 0 else ("%2.0f"%(params.desiredWaterMin)))
+        line2 = 'Lim%s-%2.0f G%s wi%s%s' % (waterlimstr, params.desiredHouseMin, gardenstr, wifistr, heatstr)
         
         print("[[", line2, "]]")
         if True and can_display:
@@ -401,8 +408,8 @@ class Temperatures:
           # thermometer name -> thermometer index
         for i in range(len(self.roms)):
             print("I", i)
-            print("type", type(self.roms))
-            print("type", type(self.roms[i]))
+            # print("type", type(self.roms))
+            # print("type", type(self.roms[i]))
             r = self.roms[i]
             print("Who's this thermo?", self.roms[i])
             # can't hash bytearrays, so walk through dictionary
@@ -635,7 +642,18 @@ class MyNetwork:
               response = get_html('index.html')
               response = response.replace('TempsStr', str(tempsStr))
               # response = response.replace('TempW', str(temps.temperatures["water"]))
-              response = response.replace('GardenWaterMeasurements', str(stats.garden_water_measurements))
+              # stats.garden_water_measurements=[12, 21, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]
+              waterlevels = stats.garden_water_measurements
+              i=0
+              waterlevelsstr = ""
+              while len(waterlevels) > 0:
+                waterlevelsstr += str(waterlevels[0]) + " "
+                waterlevels = waterlevels[1:]
+                i=i+1
+                if i > 4:
+                  waterlevelsstr += "<br/>"
+                  i = 0
+              response = response.replace('GardenWaterMeasurements', waterlevelsstr)
               response = response.replace('GarderWaterLevel', str(stats.garden_water_level))
               response = response.replace('DefaultHouseQuery', str(queryHouse))
               response = response.replace('DefaultWaterQuery', str(queryWater))

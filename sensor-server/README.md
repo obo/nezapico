@@ -22,6 +22,12 @@
 - Record temperatures from mid and top tank thermometer along with what our sensor says.
 - Run ``make`` to plot temp-correlations.tab.
 
+# Updates
+
+## 2024-01-20
+
+- when water limit == -1, disable it and use only house requirement, for winter mode
+
 
 # Temperatures correlations
 
